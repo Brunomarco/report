@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
+import matplotlib.pyplot as plt
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -57,14 +58,14 @@ st.markdown("""
         padding: 2rem;
         border-radius: 15px;
         box-shadow: 0 5px 15px rgba(0,0,0,0.08);
-        margin: 2rem 0;
+        margin: 1rem 0;
         border: 1px solid #e8f4fd;
     }
     .insight-box {
         background: linear-gradient(135deg, #e8f6ff 0%, #f0f8ff 100%);
         padding: 2rem;
         border-radius: 12px;
-        margin: 2rem 0;
+        margin: 1rem 0;
         border-left: 5px solid #3498db;
         box-shadow: 0 3px 10px rgba(0,0,0,0.1);
     }
@@ -90,13 +91,10 @@ st.markdown("""
         margin: 1rem 0;
     }
     .data-table {
-        margin: 2rem 0;
+        margin: 1rem 0;
         border-radius: 10px;
         overflow: hidden;
         box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-    }
-    .spacer {
-        margin: 3rem 0;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -143,7 +141,7 @@ def load_tms_data(uploaded_file):
             
             # 2. OTP Data - first 6 columns to get QC NAME in column F
             if "OTP POD" in excel_sheets:
-                otp_df = excel_sheets["OTP POD"].copy().iloc[:, :6]  # Get first 6 columns
+                otp_df = excel_sheets["OTP POD"].copy().iloc[:, :6]
                 otp_df.columns = ['TMS_Order', 'QDT', 'POD_DateTime', 'Time_Diff', 'Status', 'QC_Name']
                 otp_df = otp_df.dropna(subset=['TMS_Order'])
                 data['otp'] = otp_df
@@ -288,8 +286,6 @@ if tms_data is not None:
             st.metric("📈 Margin", f"{profit_margin:.1f}%", f"{profit_margin-20:.1f}% vs target")
             st.markdown('</div>', unsafe_allow_html=True)
         
-        st.markdown('<div class="spacer"></div>', unsafe_allow_html=True)
-        
         # Performance Status
         if avg_otp >= 95 and profit_margin >= 20:
             st.markdown('<div class="alert-success"><strong>✅ Excellent Performance:</strong> All key metrics exceeding targets</div>', unsafe_allow_html=True)
@@ -426,12 +422,12 @@ if tms_data is not None:
                 st.markdown('<div class="subsection-header">QC Name Analysis</div>', unsafe_allow_html=True)
                 st.markdown('<div class="chart-container">', unsafe_allow_html=True)
                 
-                # QC Name is now in column F (6th column, index 5)
+                # QC Name is now in column F (6th column)
                 if 'QC_Name' in otp_df.columns:
                     qc_data = otp_df['QC_Name'].dropna()
                     if not qc_data.empty:
                         # Clean and process QC names
-                        qc_counts = qc_data.value_counts().head(15)  # Show top 15
+                        qc_counts = qc_data.value_counts().head(15)
                         if not qc_counts.empty:
                             st.bar_chart(qc_counts, height=300)
                         
@@ -447,8 +443,6 @@ if tms_data is not None:
                     st.info("QC Name column not found")
                 
                 st.markdown('</div>', unsafe_allow_html=True)
-            
-            st.markdown('<div class="spacer"></div>', unsafe_allow_html=True)
             
             # Time difference analysis
             if 'Time_Diff' in otp_df.columns:
@@ -543,22 +537,22 @@ if tms_data is not None:
                 st.markdown('<div class="chart-container">', unsafe_allow_html=True)
                 
                 # Create color-coded financial chart
-                financial_data = pd.DataFrame({
-                    'Category': ['Revenue', 'Cost', 'Profit'],
-                    'Amount': [total_revenue, total_cost, total_revenue - total_cost],
-                    'Color': ['#27ae60', '#e74c3c', '#3498db']  # Green, Red, Blue
-                })
-                
-                # Use matplotlib-style chart for color control
-                import matplotlib.pyplot as plt
                 fig, ax = plt.subplots(figsize=(8, 6))
-                bars = ax.bar(financial_data['Category'], financial_data['Amount'], 
-                             color=['#27ae60' if x >= 0 else '#e74c3c' for x in financial_data['Amount']])
+                
+                categories = ['Revenue', 'Cost', 'Profit']
+                amounts = [total_revenue, total_cost, total_revenue - total_cost]
+                colors = ['#27ae60', '#e74c3c', '#3498db']
+                
+                bars = ax.bar(categories, amounts, color=colors)
                 ax.set_ylabel('Amount (€)')
                 ax.set_title('Financial Overview')
-                
-                # Format y-axis
                 ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'€{x:,.0f}'))
+                
+                # Add value labels on bars
+                for bar, amount in zip(bars, amounts):
+                    height = bar.get_height()
+                    ax.text(bar.get_x() + bar.get_width()/2., height + max(amounts)*0.01,
+                           f'€{amount:,.0f}', ha='center', va='bottom')
                 
                 st.pyplot(fig)
                 plt.close()
@@ -598,8 +592,6 @@ if tms_data is not None:
                 
                 st.markdown('</div>', unsafe_allow_html=True)
             
-            st.markdown('<div class="spacer"></div>', unsafe_allow_html=True)
-            
             # Country Financial Performance
             if 'PU_Country' in cost_df.columns:
                 st.markdown('<div class="subsection-header">Financial Performance by Country</div>', unsafe_allow_html=True)
@@ -620,18 +612,14 @@ if tms_data is not None:
                     st.markdown("**Revenue by Country**")
                     
                     # Color-coded revenue chart
-                    import matplotlib.pyplot as plt
                     fig, ax = plt.subplots(figsize=(10, 6))
                     
                     revenue_data = country_financials['Net_Revenue'].head(10)
                     colors = ['#27ae60' if x >= 0 else '#e74c3c' for x in revenue_data.values]
                     
                     bars = ax.bar(revenue_data.index, revenue_data.values, color=colors)
-                    ax.set_ylabel('Revenue (€)')
                     ax.set_title('Revenue by Country')
                     ax.tick_params(axis='x', rotation=45)
-                    
-                    # Format y-axis
                     ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'€{x:,.0f}'))
                     
                     st.pyplot(fig)
@@ -654,8 +642,6 @@ if tms_data is not None:
                     ax.set_title('Profit by Country')
                     ax.tick_params(axis='x', rotation=45)
                     ax.axhline(y=0, color='black', linestyle='-', alpha=0.3)
-                    
-                    # Format y-axis
                     ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'€{x:,.0f}'))
                     
                     st.pyplot(fig)
@@ -705,7 +691,6 @@ if tms_data is not None:
             st.markdown('<div class="subsection-header">Origin-Destination Network Matrix</div>', unsafe_allow_html=True)
             st.markdown('<div class="chart-container">', unsafe_allow_html=True)
             
-            # Display the lane matrix with better formatting
             display_lanes = lane_df.fillna(0)
             st.dataframe(display_lanes, use_container_width=True, height=400)
             
@@ -731,8 +716,6 @@ if tms_data is not None:
                         origin_data = origin_data[origin_data > 0].sort_values(ascending=False).head(10)
                         
                         if not origin_data.empty:
-                            # Create matplotlib chart for better control
-                            import matplotlib.pyplot as plt
                             fig, ax = plt.subplots(figsize=(10, 6))
                             
                             bars = ax.bar(range(len(origin_data)), origin_data.values, 
@@ -852,7 +835,7 @@ st.sidebar.markdown("---")
 st.sidebar.markdown("### 📊 System Status")
 
 if tms_data is not None:
-    st.sidebar.success(f"✅ Data loaded successfully")
+    st.sidebar.success("✅ Data loaded successfully")
     st.sidebar.info(f"🕐 Last updated: {datetime.now().strftime('%H:%M:%S')}")
     
     # Quick stats in sidebar
@@ -865,26 +848,6 @@ if tms_data is not None:
         st.sidebar.write(f"⏱️ Orders: {len(tms_data['otp']):,}")
     if 'cost_sales' in tms_data:
         st.sidebar.write(f"💰 Transactions: {len(tms_data['cost_sales']):,}")
-    
-    # Data export
-    st.sidebar.markdown("### 📥 Export Data")
-    if st.sidebar.button("📊 Export Analysis"):
-        st.sidebar.info("Contact administrator for data export")
-
-else:
-    st.sidebar.warning("📁 Awaiting data upload")
-
-st.sidebar.markdown("---")
-st.sidebar.markdown("### ℹ️ Dashboard Info")
-st.sidebar.info("""
-**Professional TMS Analytics**  
-Created for LFS Amsterdam  
-Real-time performance monitoring  
-Comprehensive business intelligence
-""")     # Data export
-    st.sidebar.markdown("### 📥 Export Data")
-    if st.sidebar.button("📊 Export Analysis"):
-        st.sidebar.info("Contact administrator for data export")
 
 else:
     st.sidebar.warning("📁 Awaiting data upload")
