@@ -1,36 +1,4 @@
-# Lane Network Insights
-        st.markdown('<div class="insight-box">', unsafe_allow_html=True)
-        st.markdown("**🛣️ Lane Network Analysis Insights**")
-        
-        st.markdown("• **European Hub Strategy**: Amsterdam positioned as central distribution point")
-        st.markdown("• **Multi-Country Coverage**: Comprehensive network spanning major European markets")
-        st.markdown("• **Route Optimization**: High-volume lanes identified for capacity planning")
-        st.markdown("• **Network Efficiency**: Balanced origin-destination flow patterns")
-        st.markdown("• **Strategic Routes**: Key corridors supporting business growth")
-        st.markdown('</div>', unsafe_allow_html=True)
-        
-        # Detailed Lane Network Analysis
-        st.markdown("---")
-        st.markdown("### 🌍 Comprehensive Network Analysis")
-        
-        if 'lanes' in tms_data and not tms_data['lanes'].empty:
-            lane_df = tms_data['lanes']
-            
-            # Calculate network metrics for analysis
-            total_shipments = 0
-            active_lanes = 0
-            if len(lane_df) > 0:
-                numeric_data = lane_df.select_dtypes(include=[np.number])
-                if not numeric_data.empty:
-                    total_shipments = numeric_data.sum().sum()
-                    active_lanes = (numeric_data > 0).sum().sum()
-            
-            network_analysis = f"""
-            **Network Architecture:** The Amsterdam TMS operation maintains an extensive lane network with {len(lane_df)} origin countries 
-            and {len(lane_df.columns)-1 if len(lane_df.columns) > 1 else 0} destination markets, processing {int(total_shipments):,} total shipments 
-            across {int(active_lanes):,} active lanes. This comprehensive coverage positions Amsterdam as a true European logistics hub with global reach.
-            
-            **Traffic Flow Analysis:** The origin-destination matrix reveals strategic shipping patterns with balanced inbound and outbound flows. import streamlit as st
+import streamlit as st
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
@@ -264,36 +232,36 @@ if tms_data is not None:
         "🛣️ Lane Network"
     ])
     
+    # Calculate key metrics first (used across tabs)
+    total_services = sum(tms_data.get('service_volumes', {}).values())
+    total_countries = sum(tms_data.get('country_volumes', {}).values())
+    
+    # OTP metrics
+    avg_otp = 0
+    total_orders = 0
+    if 'otp' in tms_data and not tms_data['otp'].empty:
+        otp_df = tms_data['otp']
+        if 'Status' in otp_df.columns:
+            status_series = otp_df['Status'].dropna()
+            total_orders = len(status_series)
+            on_time_orders = len(status_series[status_series == 'ON TIME'])
+            avg_otp = (on_time_orders / total_orders * 100) if total_orders > 0 else 0
+    
+    # Financial metrics
+    total_revenue = 0
+    total_cost = 0
+    profit_margin = 0
+    if 'cost_sales' in tms_data and not tms_data['cost_sales'].empty:
+        cost_df = tms_data['cost_sales']
+        if 'Net_Revenue' in cost_df.columns:
+            total_revenue = cost_df['Net_Revenue'].sum()
+        if 'Total_Cost' in cost_df.columns:
+            total_cost = cost_df['Total_Cost'].sum()
+        profit_margin = ((total_revenue - total_cost) / total_revenue * 100) if total_revenue > 0 else 0
+    
     # TAB 1: Overview
     with tab1:
         st.markdown('<h2 class="section-header">Executive Dashboard Overview</h2>', unsafe_allow_html=True)
-        
-        # Calculate key metrics
-        total_services = sum(tms_data.get('service_volumes', {}).values())
-        total_countries = sum(tms_data.get('country_volumes', {}).values())
-        
-        # OTP metrics
-        avg_otp = 0
-        total_orders = 0
-        if 'otp' in tms_data and not tms_data['otp'].empty:
-            otp_df = tms_data['otp']
-            if 'Status' in otp_df.columns:
-                status_series = otp_df['Status'].dropna()
-                total_orders = len(status_series)
-                on_time_orders = len(status_series[status_series == 'ON TIME'])
-                avg_otp = (on_time_orders / total_orders * 100) if total_orders > 0 else 0
-        
-        # Financial metrics
-        total_revenue = 0
-        total_cost = 0
-        profit_margin = 0
-        if 'cost_sales' in tms_data and not tms_data['cost_sales'].empty:
-            cost_df = tms_data['cost_sales']
-            if 'Net_Revenue' in cost_df.columns:
-                total_revenue = cost_df['Net_Revenue'].sum()
-            if 'Total_Cost' in cost_df.columns:
-                total_cost = cost_df['Total_Cost'].sum()
-            profit_margin = ((total_revenue - total_cost) / total_revenue * 100) if total_revenue > 0 else 0
         
         # KPI Dashboard
         col1, col2, col3, col4 = st.columns(4)
@@ -348,7 +316,7 @@ if tms_data is not None:
             st.markdown("• **Service Diversification** ongoing")
             st.markdown("• **Network Expansion** potential")
             st.markdown('</div>', unsafe_allow_html=True)
-    
+
     # TAB 2: Volume Analysis
     with tab2:
         st.markdown('<h2 class="section-header">Volume Analysis by Service & Country</h2>', unsafe_allow_html=True)
@@ -395,24 +363,7 @@ if tms_data is not None:
                     })
                     st.dataframe(country_table, hide_index=True, use_container_width=True)
                     st.markdown('</div>', unsafe_allow_html=True)
-        
-        # Volume insights
-        st.markdown('<div class="insight-box">', unsafe_allow_html=True)
-        st.markdown("**📦 Volume Analysis Insights**")
-        
-        if 'service_volumes' in tms_data and tms_data['service_volumes']:
-            top_service = max(tms_data['service_volumes'], key=tms_data['service_volumes'].get)
-            st.markdown(f"• **Top Service**: {top_service} with {tms_data['service_volumes'][top_service]:.0f} pieces")
-        
-        if 'country_volumes' in tms_data and tms_data['country_volumes']:
-            top_country = max(tms_data['country_volumes'], key=tms_data['country_volumes'].get)
-            st.markdown(f"• **Top Country**: {top_country} with {tms_data['country_volumes'][top_country]:.0f} shipments")
-        
-        st.markdown(f"• **Total Services**: {len(tms_data.get('service_volumes', {}))} active service types")
-        st.markdown(f"• **Geographic Reach**: {len(tms_data.get('country_volumes', {}))} countries served")
-        st.markdown("• **Portfolio Diversification**: Balanced mix reduces operational risk")
-        st.markdown('</div>', unsafe_allow_html=True)
-    
+
     # TAB 3: OTP Performance
     with tab3:
         st.markdown('<h2 class="section-header">On-Time Performance Deep Analysis</h2>', unsafe_allow_html=True)
@@ -459,7 +410,7 @@ if tms_data is not None:
                     qc_data = otp_df['QC_Name'].dropna()
                     if not qc_data.empty:
                         # Clean and process QC names
-                        qc_counts = qc_data.value_counts().head(15)
+                        qc_counts = qc_data.value_counts().head(10)
                         if not qc_counts.empty:
                             st.bar_chart(qc_counts, height=300)
                         
@@ -475,109 +426,10 @@ if tms_data is not None:
                     st.info("QC Name column not found")
                 
                 st.markdown('</div>', unsafe_allow_html=True)
-            
-            # Time difference analysis
-            if 'Time_Diff' in otp_df.columns:
-                st.markdown('<div class="subsection-header">Delivery Time Analysis</div>', unsafe_allow_html=True)
-                
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    st.markdown('<div class="chart-container">', unsafe_allow_html=True)
-                    time_diff_clean = otp_df['Time_Diff'].dropna()
-                    if not time_diff_clean.empty and len(time_diff_clean) > 0:
-                        try:
-                            # Create simple binned data for visualization
-                            bins = [-np.inf, -1, -0.5, 0, 0.5, 1, np.inf]
-                            labels = ['Early >1d', 'Early 0.5-1d', 'Early <0.5d', 'On Time', 'Late 0.5-1d', 'Late >1d']
-                            
-                            # Ensure we have valid numeric data
-                            time_diff_numeric = pd.to_numeric(time_diff_clean, errors='coerce').dropna()
-                            
-                            if len(time_diff_numeric) > 0:
-                                binned_data = pd.cut(time_diff_numeric, bins=bins, labels=labels)
-                                hist_counts = binned_data.value_counts()
-                                
-                                if not hist_counts.empty:
-                                    st.bar_chart(hist_counts, height=300)
-                                else:
-                                    st.info("No valid time difference data to display")
-                            else:
-                                st.info("No numeric time difference data available")
-                        except Exception as e:
-                            st.info("Time difference analysis unavailable")
-                    else:
-                        st.info("No time difference data available")
-                    st.markdown('</div>', unsafe_allow_html=True)
-                
-                with col2:
-                    st.markdown('<div class="chart-container">', unsafe_allow_html=True)
-                    time_diff_clean = otp_df['Time_Diff'].dropna()
-                    if not time_diff_clean.empty and len(time_diff_clean) > 0:
-                        try:
-                            # Convert to numeric and calculate stats
-                            time_diff_numeric = pd.to_numeric(time_diff_clean, errors='coerce').dropna()
-                            
-                            if len(time_diff_numeric) > 0:
-                                time_stats = pd.DataFrame({
-                                    'Statistic': ['Mean Difference', 'Median', 'Std Dev', 'Min', 'Max'],
-                                    'Days': [
-                                        f"{time_diff_numeric.mean():.2f}",
-                                        f"{time_diff_numeric.median():.2f}",
-                                        f"{time_diff_numeric.std():.2f}",
-                                        f"{time_diff_numeric.min():.2f}",
-                                        f"{time_diff_numeric.max():.2f}"
-                                    ]
-                                })
-                                st.dataframe(time_stats, hide_index=True, use_container_width=True)
-                            else:
-                                st.info("No numeric data for statistics")
-                        except Exception as e:
-                            st.info("Time statistics unavailable")
-                    else:
-                        st.info("No time difference data for analysis")
-                    st.markdown('</div>', unsafe_allow_html=True)
-        
-        # OTP Insights
-        st.markdown('<div class="insight-box">', unsafe_allow_html=True)
-        st.markdown("**⏱️ OTP Performance Insights**")
-        
-        if avg_otp >= 95:
-            st.markdown("• **Excellent Performance**: OTP exceeds industry standard of 95%")
-        elif avg_otp >= 90:
-            st.markdown("• **Good Performance**: Minor improvements needed to reach 95% target")
-        else:
-            st.markdown("• **Action Required**: Significant OTP improvement needed")
-        
-        st.markdown(f"• **Total Orders Tracked**: {total_orders:,} with systematic monitoring")
-        st.markdown("• **Quality Control**: Multiple QC checkpoints ensuring delivery accuracy")
-        st.markdown("• **Time Tracking**: Detailed analysis of delivery time variations")
-        st.markdown('</div>', unsafe_allow_html=True)
-        
-        # Detailed OTP Analysis
-        st.markdown("---")
-        st.markdown("### ⏰ Comprehensive OTP Performance Analysis")
-        
-        otp_analysis = f"""
-        **Delivery Performance Overview:** With {total_orders:,} orders tracked through the TMS system, the operation achieves an {avg_otp:.1f}% on-time performance rate. 
-        This {'exceeds' if avg_otp >= 95 else 'falls short of'} the industry benchmark of 95%, {'demonstrating excellent operational control' if avg_otp >= 95 else 'indicating areas for improvement in delivery management'}.
-        
-        **Quality Control Impact:** The QC Name analysis reveals specific delay causes and control points throughout the delivery process. 
-        Common issues include MNX-Incorrect QDT (incorrect quoted delivery times), customer-related changes and delays, and operational bottlenecks. 
-        This detailed tracking enables targeted improvements in process reliability and customer communication.
-        
-        **Delivery Time Analysis:** The time difference analysis shows the distribution of early, on-time, and late deliveries, providing insights into 
-        operational predictability and customer satisfaction levels. Understanding these patterns enables proactive management of delivery expectations and resource allocation.
-        
-        **Performance Improvement Opportunities:** {'Current excellent performance provides a strong foundation for maintaining industry leadership' if avg_otp >= 95 else 'The gap to target performance represents significant opportunity for customer satisfaction improvement and competitive differentiation'}. 
-        Focus areas include {'maintaining current excellence through continuous monitoring' if avg_otp >= 95 else 'addressing root causes of delays, improving delivery time accuracy, and enhancing customer communication'}.
-        """
-        
-        st.markdown(otp_analysis)
-    
+
     # TAB 4: Financial Analysis
     with tab4:
-        st.markdown('<h2 class="section-header">Financial Performance & Profitability Analysis</h2>', unsafe_allow_html=True)
+        st.markdown('<h2 class="section-header">Financial Performance Analysis</h2>', unsafe_allow_html=True)
         
         if 'cost_sales' in tms_data and not tms_data['cost_sales'].empty:
             cost_df = tms_data['cost_sales']
@@ -645,7 +497,7 @@ if tms_data is not None:
                 
                 st.markdown('</div>', unsafe_allow_html=True)
             
-            # Country Financial Performance
+            # Country Financial Performance - Show ALL countries
             if 'PU_Country' in cost_df.columns:
                 st.markdown('<div class="subsection-header">Financial Performance by Country</div>', unsafe_allow_html=True)
                 
@@ -662,19 +514,22 @@ if tms_data is not None:
                 
                 with col1:
                     st.markdown('<div class="chart-container">', unsafe_allow_html=True)
-                    st.markdown("**Revenue by Country**")
+                    st.markdown("**Revenue by Country - All Markets**")
                     
-                    # Color-coded revenue chart
-                    fig, ax = plt.subplots(figsize=(10, 6))
+                    # Show ALL countries in the chart
+                    fig, ax = plt.subplots(figsize=(12, 8))
                     
-                    revenue_data = country_financials['Net_Revenue'].head(10)
+                    revenue_data = country_financials['Net_Revenue']
                     colors = ['#27ae60' if x >= 0 else '#e74c3c' for x in revenue_data.values]
                     
-                    bars = ax.bar(revenue_data.index, revenue_data.values, color=colors)
+                    bars = ax.bar(range(len(revenue_data)), revenue_data.values, color=colors)
+                    ax.set_xticks(range(len(revenue_data)))
+                    ax.set_xticklabels(revenue_data.index, rotation=45)
+                    ax.set_ylabel('Revenue (€)')
                     ax.set_title('Revenue by Country')
-                    ax.tick_params(axis='x', rotation=45)
                     ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'€{x:,.0f}'))
                     
+                    plt.tight_layout()
                     st.pyplot(fig)
                     plt.close()
                     
@@ -682,57 +537,28 @@ if tms_data is not None:
                 
                 with col2:
                     st.markdown('<div class="chart-container">', unsafe_allow_html=True)
-                    st.markdown("**Profit by Country**")
+                    st.markdown("**Profit by Country - All Markets**")
                     
-                    # Color-coded profit chart
-                    fig, ax = plt.subplots(figsize=(10, 6))
+                    # Show ALL countries in the chart
+                    fig, ax = plt.subplots(figsize=(12, 8))
                     
-                    profit_data = country_financials['Profit'].head(10)
+                    profit_data = country_financials['Profit']
                     colors = ['#27ae60' if x >= 0 else '#e74c3c' for x in profit_data.values]
                     
-                    bars = ax.bar(profit_data.index, profit_data.values, color=colors)
+                    bars = ax.bar(range(len(profit_data)), profit_data.values, color=colors)
+                    ax.set_xticks(range(len(profit_data)))
+                    ax.set_xticklabels(profit_data.index, rotation=45)
                     ax.set_ylabel('Profit (€)')
                     ax.set_title('Profit by Country')
-                    ax.tick_params(axis='x', rotation=45)
                     ax.axhline(y=0, color='black', linestyle='-', alpha=0.3)
                     ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'€{x:,.0f}'))
                     
+                    plt.tight_layout()
                     st.pyplot(fig)
                     plt.close()
                     
                     st.markdown('</div>', unsafe_allow_html=True)
-                
-                # Detailed financial table
-                st.markdown('<div class="data-table">', unsafe_allow_html=True)
-                st.markdown("**Detailed Country Financial Performance**")
-                
-                display_financials = country_financials.copy()
-                display_financials['Net_Revenue'] = display_financials['Net_Revenue'].round(0).astype(int)
-                display_financials['Total_Cost'] = display_financials['Total_Cost'].round(0).astype(int)
-                display_financials['Profit'] = display_financials['Profit'].round(0).astype(int)
-                display_financials['Gross_Percent'] = (display_financials['Gross_Percent'] * 100).round(1)
-                display_financials.columns = ['Revenue (€)', 'Cost (€)', 'Margin (%)', 'Profit (€)']
-                
-                st.dataframe(display_financials, use_container_width=True)
-                st.markdown('</div>', unsafe_allow_html=True)
-        
-        # Financial Insights
-        st.markdown('<div class="insight-box">', unsafe_allow_html=True)
-        st.markdown("**💰 Financial Performance Insights**")
-        
-        if profit_margin >= 20:
-            st.markdown("• **Strong Profitability**: Margins exceed 20% target indicating efficient operations")
-        elif profit_margin >= 10:
-            st.markdown("• **Moderate Profitability**: Opportunities exist for margin improvement")
-        else:
-            st.markdown("• **Margin Concern**: Immediate focus needed on cost optimization")
-        
-        st.markdown(f"• **Total Revenue**: €{total_revenue:,.0f} from operational activities")
-        st.markdown(f"• **Operating Profit**: €{(total_revenue - total_cost):,.0f} net profit generated")
-        st.markdown("• **Cost Structure**: Detailed breakdown enables targeted optimization")
-        st.markdown("• **Country Analysis**: Geographic profitability patterns identified")
-        st.markdown('</div>', unsafe_allow_html=True)
-    
+
     # TAB 5: Lane Network
     with tab5:
         st.markdown('<h2 class="section-header">Lane Network & Route Analysis</h2>', unsafe_allow_html=True)
@@ -814,51 +640,6 @@ if tms_data is not None:
                             plt.close()
                     
                     st.markdown('</div>', unsafe_allow_html=True)
-            
-            # Network Statistics
-            st.markdown('<div class="subsection-header">Network Performance Statistics</div>', unsafe_allow_html=True)
-            st.markdown('<div class="chart-container">', unsafe_allow_html=True)
-            
-            # Calculate network metrics
-            total_shipments = 0
-            active_lanes = 0
-            
-            if len(lane_df) > 0:
-                numeric_data = lane_df.select_dtypes(include=[np.number])
-                if not numeric_data.empty:
-                    total_shipments = numeric_data.sum().sum()
-                    active_lanes = (numeric_data > 0).sum().sum()
-            
-            network_stats = pd.DataFrame({
-                'Metric': [
-                    'Total Shipments',
-                    'Active Lanes',
-                    'Origin Countries',
-                    'Destination Countries',
-                    'Average per Lane'
-                ],
-                'Value': [
-                    f"{int(total_shipments):,}",
-                    f"{int(active_lanes):,}",
-                    f"{len(lane_df):,}",
-                    f"{len(lane_df.columns)-1:,}" if len(lane_df.columns) > 1 else "0",
-                    f"{(total_shipments/active_lanes):.1f}" if active_lanes > 0 else "0"
-                ]
-            })
-            
-            st.dataframe(network_stats, hide_index=True, use_container_width=True)
-            st.markdown('</div>', unsafe_allow_html=True)
-        
-        # Lane Network Insights
-        st.markdown('<div class="insight-box">', unsafe_allow_html=True)
-        st.markdown("**🛣️ Lane Network Analysis Insights**")
-        
-        st.markdown("• **European Hub Strategy**: Amsterdam positioned as central distribution point")
-        st.markdown("• **Multi-Country Coverage**: Comprehensive network spanning major European markets")
-        st.markdown("• **Route Optimization**: High-volume lanes identified for capacity planning")
-        st.markdown("• **Network Efficiency**: Balanced origin-destination flow patterns")
-        st.markdown("• **Strategic Routes**: Key corridors supporting business growth")
-        st.markdown('</div>', unsafe_allow_html=True)
 
 else:
     # No data uploaded
