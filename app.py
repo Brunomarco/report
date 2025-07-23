@@ -141,10 +141,10 @@ def load_tms_data(uploaded_file):
             if "AMS RAW DATA" in excel_sheets:
                 data['raw_data'] = excel_sheets["AMS RAW DATA"].copy()
             
-            # 2. OTP Data - first 5 columns only
+            # 2. OTP Data - first 6 columns to get QC NAME in column F
             if "OTP POD" in excel_sheets:
-                otp_df = excel_sheets["OTP POD"].copy().iloc[:, :5]
-                otp_df.columns = ['TMS_Order', 'QDT', 'POD_DateTime', 'Time_Diff', 'Status']
+                otp_df = excel_sheets["OTP POD"].copy().iloc[:, :6]  # Get first 6 columns
+                otp_df.columns = ['TMS_Order', 'QDT', 'POD_DateTime', 'Time_Diff', 'Status', 'QC_Name']
                 otp_df = otp_df.dropna(subset=['TMS_Order'])
                 data['otp'] = otp_df
             
@@ -368,8 +368,6 @@ if tms_data is not None:
                     st.dataframe(country_table, hide_index=True, use_container_width=True)
                     st.markdown('</div>', unsafe_allow_html=True)
         
-        st.markdown('<div class="spacer"></div>', unsafe_allow_html=True)
-        
         # Volume insights
         st.markdown('<div class="insight-box">', unsafe_allow_html=True)
         st.markdown("**📦 Volume Analysis Insights**")
@@ -428,26 +426,25 @@ if tms_data is not None:
                 st.markdown('<div class="subsection-header">QC Name Analysis</div>', unsafe_allow_html=True)
                 st.markdown('<div class="chart-container">', unsafe_allow_html=True)
                 
-                # Find QC Name column (it might be in different positions)
-                qc_column = None
-                for col in otp_df.columns:
-                    if 'QC' in str(col).upper() or 'NAME' in str(col).upper():
-                        qc_column = col
-                        break
-                
-                if qc_column is not None:
-                    qc_counts = otp_df[qc_column].value_counts().head(10)
-                    if not qc_counts.empty:
-                        st.bar_chart(qc_counts, height=300)
-                    
-                    # QC breakdown table
-                    qc_table = pd.DataFrame({
-                        'QC Name': qc_counts.index,
-                        'Count': qc_counts.values
-                    })
-                    st.dataframe(qc_table, hide_index=True, use_container_width=True)
+                # QC Name is now in column F (6th column, index 5)
+                if 'QC_Name' in otp_df.columns:
+                    qc_data = otp_df['QC_Name'].dropna()
+                    if not qc_data.empty:
+                        # Clean and process QC names
+                        qc_counts = qc_data.value_counts().head(15)  # Show top 15
+                        if not qc_counts.empty:
+                            st.bar_chart(qc_counts, height=300)
+                        
+                        # QC breakdown table
+                        qc_table = pd.DataFrame({
+                            'QC Reason': qc_counts.index,
+                            'Count': qc_counts.values
+                        })
+                        st.dataframe(qc_table, hide_index=True, use_container_width=True)
+                    else:
+                        st.info("No QC Name data available")
                 else:
-                    st.info("QC Name data not found in expected format")
+                    st.info("QC Name column not found")
                 
                 st.markdown('</div>', unsafe_allow_html=True)
             
@@ -545,12 +542,26 @@ if tms_data is not None:
                 st.markdown('<div class="subsection-header">Revenue vs Cost</div>', unsafe_allow_html=True)
                 st.markdown('<div class="chart-container">', unsafe_allow_html=True)
                 
-                financial_overview = pd.Series({
-                    'Revenue': total_revenue,
-                    'Cost': total_cost,
-                    'Profit': total_revenue - total_cost
+                # Create color-coded financial chart
+                financial_data = pd.DataFrame({
+                    'Category': ['Revenue', 'Cost', 'Profit'],
+                    'Amount': [total_revenue, total_cost, total_revenue - total_cost],
+                    'Color': ['#27ae60', '#e74c3c', '#3498db']  # Green, Red, Blue
                 })
-                st.bar_chart(financial_overview, height=300)
+                
+                # Use matplotlib-style chart for color control
+                import matplotlib.pyplot as plt
+                fig, ax = plt.subplots(figsize=(8, 6))
+                bars = ax.bar(financial_data['Category'], financial_data['Amount'], 
+                             color=['#27ae60' if x >= 0 else '#e74c3c' for x in financial_data['Amount']])
+                ax.set_ylabel('Amount (€)')
+                ax.set_title('Financial Overview')
+                
+                # Format y-axis
+                ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'€{x:,.0f}'))
+                
+                st.pyplot(fig)
+                plt.close()
                 
                 st.markdown('</div>', unsafe_allow_html=True)
             
@@ -607,13 +618,49 @@ if tms_data is not None:
                 with col1:
                     st.markdown('<div class="chart-container">', unsafe_allow_html=True)
                     st.markdown("**Revenue by Country**")
-                    st.bar_chart(country_financials['Net_Revenue'], height=400)
+                    
+                    # Color-coded revenue chart
+                    import matplotlib.pyplot as plt
+                    fig, ax = plt.subplots(figsize=(10, 6))
+                    
+                    revenue_data = country_financials['Net_Revenue'].head(10)
+                    colors = ['#27ae60' if x >= 0 else '#e74c3c' for x in revenue_data.values]
+                    
+                    bars = ax.bar(revenue_data.index, revenue_data.values, color=colors)
+                    ax.set_ylabel('Revenue (€)')
+                    ax.set_title('Revenue by Country')
+                    ax.tick_params(axis='x', rotation=45)
+                    
+                    # Format y-axis
+                    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'€{x:,.0f}'))
+                    
+                    st.pyplot(fig)
+                    plt.close()
+                    
                     st.markdown('</div>', unsafe_allow_html=True)
                 
                 with col2:
                     st.markdown('<div class="chart-container">', unsafe_allow_html=True)
-                    st.markdown("**Profit Margin by Country**")
-                    st.bar_chart(country_financials['Gross_Percent'], height=400)
+                    st.markdown("**Profit by Country**")
+                    
+                    # Color-coded profit chart
+                    fig, ax = plt.subplots(figsize=(10, 6))
+                    
+                    profit_data = country_financials['Profit'].head(10)
+                    colors = ['#27ae60' if x >= 0 else '#e74c3c' for x in profit_data.values]
+                    
+                    bars = ax.bar(profit_data.index, profit_data.values, color=colors)
+                    ax.set_ylabel('Profit (€)')
+                    ax.set_title('Profit by Country')
+                    ax.tick_params(axis='x', rotation=45)
+                    ax.axhline(y=0, color='black', linestyle='-', alpha=0.3)
+                    
+                    # Format y-axis
+                    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'€{x:,.0f}'))
+                    
+                    st.pyplot(fig)
+                    plt.close()
+                    
                     st.markdown('</div>', unsafe_allow_html=True)
                 
                 # Detailed financial table
@@ -658,47 +705,77 @@ if tms_data is not None:
             st.markdown('<div class="subsection-header">Origin-Destination Network Matrix</div>', unsafe_allow_html=True)
             st.markdown('<div class="chart-container">', unsafe_allow_html=True)
             
-            # Display the lane matrix
+            # Display the lane matrix with better formatting
             display_lanes = lane_df.fillna(0)
             st.dataframe(display_lanes, use_container_width=True, height=400)
             
             st.markdown('</div>', unsafe_allow_html=True)
             
-            st.markdown('<div class="spacer"></div>', unsafe_allow_html=True)
-            
-            # Network Analysis
+            # Network Visualization
             if len(lane_df) > 1 and len(lane_df.columns) > 1:
+                st.markdown('<div class="subsection-header">Network Traffic Analysis</div>', unsafe_allow_html=True)
+                
                 col1, col2 = st.columns(2)
                 
                 with col1:
-                    st.markdown('<div class="subsection-header">Top Origin Countries</div>', unsafe_allow_html=True)
                     st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+                    st.markdown("**Top Origin Countries**")
                     
-                    # Calculate row totals (origins)
+                    # Calculate and visualize origin totals
                     numeric_cols = lane_df.select_dtypes(include=[np.number]).columns
                     if len(numeric_cols) > 0:
                         origin_totals = lane_df[numeric_cols].sum(axis=1)
                         origin_countries = lane_df.iloc[:, 0] if len(lane_df.columns) > 0 else range(len(origin_totals))
                         
                         origin_data = pd.Series(origin_totals.values, index=origin_countries)
-                        origin_data = origin_data[origin_data > 0].sort_values(ascending=False)
+                        origin_data = origin_data[origin_data > 0].sort_values(ascending=False).head(10)
                         
                         if not origin_data.empty:
-                            st.bar_chart(origin_data.head(10), height=350)
+                            # Create matplotlib chart for better control
+                            import matplotlib.pyplot as plt
+                            fig, ax = plt.subplots(figsize=(10, 6))
+                            
+                            bars = ax.bar(range(len(origin_data)), origin_data.values, 
+                                        color='#3498db', alpha=0.7)
+                            ax.set_xticks(range(len(origin_data)))
+                            ax.set_xticklabels(origin_data.index, rotation=45)
+                            ax.set_ylabel('Total Shipments')
+                            ax.set_title('Outbound Traffic by Country')
+                            
+                            # Add value labels on bars
+                            for i, v in enumerate(origin_data.values):
+                                ax.text(i, v + 0.1, str(int(v)), ha='center', va='bottom')
+                            
+                            st.pyplot(fig)
+                            plt.close()
                     
                     st.markdown('</div>', unsafe_allow_html=True)
                 
                 with col2:
-                    st.markdown('<div class="subsection-header">Top Destination Countries</div>', unsafe_allow_html=True)
                     st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+                    st.markdown("**Top Destination Countries**")
                     
-                    # Calculate column totals (destinations)
+                    # Calculate and visualize destination totals
                     if len(numeric_cols) > 0:
                         dest_totals = lane_df[numeric_cols].sum(axis=0)
-                        dest_data = dest_totals[dest_totals > 0].sort_values(ascending=False)
+                        dest_data = dest_totals[dest_totals > 0].sort_values(ascending=False).head(10)
                         
                         if not dest_data.empty:
-                            st.bar_chart(dest_data.head(10), height=350)
+                            fig, ax = plt.subplots(figsize=(10, 6))
+                            
+                            bars = ax.bar(range(len(dest_data)), dest_data.values, 
+                                        color='#e74c3c', alpha=0.7)
+                            ax.set_xticks(range(len(dest_data)))
+                            ax.set_xticklabels(dest_data.index, rotation=45)
+                            ax.set_ylabel('Total Shipments')
+                            ax.set_title('Inbound Traffic by Country')
+                            
+                            # Add value labels on bars
+                            for i, v in enumerate(dest_data.values):
+                                ax.text(i, v + 0.1, str(int(v)), ha='center', va='bottom')
+                            
+                            st.pyplot(fig)
+                            plt.close()
                     
                     st.markdown('</div>', unsafe_allow_html=True)
             
@@ -749,8 +826,6 @@ if tms_data is not None:
 
 else:
     # No data uploaded
-    st.markdown('<div class="spacer"></div>', unsafe_allow_html=True)
-    
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.markdown('''
@@ -806,14 +881,17 @@ st.sidebar.info("""
 Created for LFS Amsterdam  
 Real-time performance monitoring  
 Comprehensive business intelligence
-""")
+""")     st.sidebar.button("📊 Export Analysis"):
+        st.sidebar.info("Contact administrator for data export")
 
-# Footer
-st.markdown('<div class="spacer"></div>', unsafe_allow_html=True)
-st.markdown('''
-<div style="text-align: center; padding: 2rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 15px; margin-top: 3rem;">
-    <h3>LFS Amsterdam TMS Dashboard</h3>
-    <p>Professional Transportation Management System Analytics</p>
-    <p style="font-size: 0.9rem; opacity: 0.8;">Empowering data-driven logistics decisions</p>
-</div>
-''', unsafe_allow_html=True)
+else:
+    st.sidebar.warning("📁 Awaiting data upload")
+
+st.sidebar.markdown("---")
+st.sidebar.markdown("### ℹ️ Dashboard Info")
+st.sidebar.info("""
+**Professional TMS Analytics**  
+Created for LFS Amsterdam  
+Real-time performance monitoring  
+Comprehensive business intelligence
+""")
