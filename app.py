@@ -43,428 +43,665 @@ st.markdown("""
         border: 1px solid #1f77b4;
         margin: 1rem 0;
     }
+    .alert-box {
+        background-color: #fff3cd;
+        border: 1px solid #ffeaa7;
+        padding: 1rem;
+        border-radius: 0.5rem;
+        margin: 1rem 0;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 # Title and header
 st.markdown('<h1 class="main-header">🚛 LFS Amsterdam - TMS Performance Dashboard</h1>', unsafe_allow_html=True)
 st.markdown("**Transportation Management System Analytics & KPI Monitoring**")
+st.markdown("*Based on TMS Raw Data Analysis*")
 
-# Sidebar for filters and controls
+# Sidebar for controls
 st.sidebar.title("📋 Dashboard Controls")
 st.sidebar.markdown("---")
 
-# Date range selector
-date_range = st.sidebar.date_input(
-    "Select Date Range",
-    value=(datetime.now() - timedelta(days=30), datetime.now()),
-    help="Select the period for analysis"
-)
-
-# Service type filter
-service_types = st.sidebar.multiselect(
-    "Service Types",
-    options=['AVS', 'LFS', 'SP', 'RP'],
-    default=['AVS', 'LFS', 'SP', 'RP'],
-    help="Filter by service type"
-)
-
 # File upload section
-st.sidebar.markdown("---")
-st.sidebar.markdown("### 📁 Data Upload")
 uploaded_file = st.sidebar.file_uploader(
     "Upload TMS Data (Excel)",
     type=['xlsx', 'xls'],
-    help="Upload your TMS raw data file"
+    help="Upload your 'report raw data.xls' file"
 )
 
-# Sample data generation (replace with your actual data loading)
+# Function to load and process the actual Excel data
 @st.cache_data
-def load_sample_data():
-    """
-    Replace this function with your actual data loading from Excel sheets
-    """
-    np.random.seed(42)
-    dates = pd.date_range(start='2024-01-01', end='2024-12-31', freq='D')
-    
-    # Volume data
-    volume_data = []
-    for date in dates:
-        for service in ['AVS', 'LFS', 'SP', 'RP']:
-            volume_data.append({
-                'Date': date,
-                'Service_Type': service,
-                'Volume': np.random.poisson(50 + (ord(service[0]) % 20)),
-                'Revenue': np.random.normal(1000, 200),
-                'Cost': np.random.normal(800, 150),
-                'OTP_Score': np.random.beta(8, 2) * 100
-            })
-    
-    df_volume = pd.DataFrame(volume_data)
-    
-    # Lane usage data
-    lanes = ['AMS-LON', 'AMS-PAR', 'AMS-BER', 'AMS-ROM', 'AMS-MAD']
-    lane_data = []
-    for date in dates[::7]:  # Weekly data
-        for lane in lanes:
-            lane_data.append({
-                'Date': date,
-                'Lane': lane,
-                'Utilization': np.random.uniform(0.3, 0.95),
-                'Shipments': np.random.poisson(25),
-                'Avg_Cost_Per_Shipment': np.random.normal(150, 30)
-            })
-    
-    df_lanes = pd.DataFrame(lane_data)
-    
-    return df_volume, df_lanes
-
-@st.cache_data
-def load_excel_data(uploaded_file):
-    """
-    Load data from uploaded Excel file
-    """
+def load_tms_data(uploaded_file):
+    """Load and process the actual TMS Excel file"""
     if uploaded_file is not None:
         try:
-            # Read all sheets
-            excel_file = pd.ExcelFile(uploaded_file)
-            sheets = {}
-            for sheet_name in excel_file.sheet_names:
-                sheets[sheet_name] = pd.read_excel(uploaded_file, sheet_name=sheet_name)
-            return sheets
+            # Read all sheets from the Excel file
+            excel_sheets = pd.read_excel(uploaded_file, sheet_name=None)
+            
+            # Process each sheet according to the actual structure
+            data = {}
+            
+            # 1. OTP POD Sheet Processing
+            if "OTP POD" in excel_sheets:
+                otp_df = excel_sheets["OTP POD"]
+                # Clean column names and process OTP data
+                otp_df.columns = ['TMS_Order', 'QDT', 'POD_DateTime', 'Time_Diff', 'Status', 'QC_Name', 
+                                'Col7', 'Col8', 'Order', 'OTP_Percent', 'Raw']
+                # Convert dates and calculate OTP metrics
+                otp_df = otp_df.dropna(subset=['TMS_Order'])
+                data['otp'] = otp_df
+            
+            # 2. Volume per SVC Sheet Processing  
+            if "Volume per SVC" in excel_sheets:
+                volume_df = excel_sheets["Volume per SVC"]
+                # Process the volume data - it appears to be in a pivot format
+                volume_df = volume_df.dropna()
+                # Extract service types and their volumes
+                data['volume'] = volume_df
+            
+            # 3. Lane Usage Sheet Processing
+            if "Lane usage " in excel_sheets:
+                lane_df = excel_sheets["Lane usage "]
+                # This is a matrix of origin-destination pairs
+                data['lanes'] = lane_df
+            
+            # 4. Cost Sales Sheet Processing
+            if "cost sales" in excel_sheets:
+                cost_df = excel_sheets["cost sales"]
+                # Clean and process cost/revenue data
+                cost_df.columns = ['Order_Date', 'Account', 'Account_Name', 'Office', 'Order_Num', 
+                                 'PU_Cost', 'Ship_Cost', 'Man_Cost', 'Del_Cost', 'Total_Cost',
+                                 'Net_Revenue', 'Currency', 'Diff', 'Gross_Percent', 'Invoice_Num',
+                                 'Total_Amount', 'Status', 'PU_Country']
+                data['cost_sales'] = cost_df
+            
+            # 5. AMS RAW DATA Sheet Processing (main dataset)
+            if "AMS RAW DATA" in excel_sheets:
+                raw_df = excel_sheets["AMS RAW DATA"]
+                data['raw_data'] = raw_df
+            
+            return data
+            
         except Exception as e:
-            st.error(f"Error reading Excel file: {str(e)}")
+            st.error(f"Error processing Excel file: {str(e)}")
             return None
+    
     return None
 
-# Load data
+# Load the data
 if uploaded_file is not None:
-    excel_sheets = load_excel_data(uploaded_file)
-    if excel_sheets:
-        st.sidebar.success(f"✅ Loaded {len(excel_sheets)} sheets from Excel file")
-        st.sidebar.write("Sheet names:", list(excel_sheets.keys()))
-        # Here you would process your actual Excel data
-        # For now, we'll use sample data
-        df_volume, df_lanes = load_sample_data()
+    tms_data = load_tms_data(uploaded_file)
+    if tms_data:
+        st.sidebar.success("✅ TMS Data loaded successfully!")
+        st.sidebar.write("Available datasets:", list(tms_data.keys()))
     else:
-        df_volume, df_lanes = load_sample_data()
+        st.sidebar.error("❌ Error loading TMS data")
+        tms_data = None
 else:
-    df_volume, df_lanes = load_sample_data()
-    st.sidebar.info("📝 Using sample data. Upload your Excel file to see actual data.")
+    st.sidebar.info("📁 Please upload your 'report raw data.xls' file to begin analysis")
+    tms_data = None
 
-# Filter data based on sidebar selections
-df_volume_filtered = df_volume[df_volume['Service_Type'].isin(service_types)]
-df_volume_filtered = df_volume_filtered[
-    (df_volume_filtered['Date'] >= pd.to_datetime(date_range[0])) &
-    (df_volume_filtered['Date'] <= pd.to_datetime(date_range[1]))
-]
-
-# Main dashboard layout
-col1, col2, col3, col4 = st.columns(4)
-
-# KPI Metrics
-with col1:
-    total_volume = df_volume_filtered['Volume'].sum()
-    prev_volume = df_volume_filtered['Volume'].sum() * 0.9  # Sample comparison
-    delta_volume = total_volume - prev_volume
-    st.metric(
-        label="📦 Total Volume",
-        value=f"{total_volume:,}",
-        delta=f"{delta_volume:,.0f}",
-        delta_color="normal"
-    )
-
-with col2:
-    avg_otp = df_volume_filtered['OTP_Score'].mean()
-    target_otp = 95.0
-    delta_otp = avg_otp - target_otp
-    st.metric(
-        label="⏰ Avg OTP Score",
-        value=f"{avg_otp:.1f}%",
-        delta=f"{delta_otp:.1f}% vs target",
-        delta_color="normal" if delta_otp >= 0 else "inverse"
-    )
-
-with col3:
-    total_revenue = df_volume_filtered['Revenue'].sum()
-    prev_revenue = total_revenue * 0.85  # Sample comparison
-    delta_revenue = total_revenue - prev_revenue
-    st.metric(
-        label="💰 Total Revenue",
-        value=f"€{total_revenue:,.0f}",
-        delta=f"€{delta_revenue:,.0f}",
-        delta_color="normal"
-    )
-
-with col4:
-    profit_margin = ((df_volume_filtered['Revenue'].sum() - df_volume_filtered['Cost'].sum()) / df_volume_filtered['Revenue'].sum()) * 100
-    target_margin = 20.0
-    delta_margin = profit_margin - target_margin
-    st.metric(
-        label="📈 Profit Margin",
-        value=f"{profit_margin:.1f}%",
-        delta=f"{delta_margin:.1f}% vs target",
-        delta_color="normal" if delta_margin >= 0 else "inverse"
-    )
-
-st.markdown("---")
-
-# Volume Analysis Section
-st.markdown('<h2 class="section-header">📊 Volume Analysis by Service Type</h2>', unsafe_allow_html=True)
-
-col1, col2 = st.columns(2)
-
-with col1:
-    st.markdown("**Daily Volume Trends**")
-    # Volume by service type (daily trend)
-    daily_volume = df_volume_filtered.groupby(['Date', 'Service_Type'])['Volume'].sum().reset_index()
-    pivot_volume = daily_volume.pivot(index='Date', columns='Service_Type', values='Volume')
-    st.line_chart(pivot_volume)
-
-with col2:
-    st.markdown("**Volume Distribution by Service Type**")
-    # Volume distribution
-    service_totals = df_volume_filtered.groupby('Service_Type')['Volume'].sum()
-    st.bar_chart(service_totals)
-
-# Create summary table for volume
-st.markdown("**Volume Summary Table**")
-volume_summary = df_volume_filtered.groupby('Service_Type').agg({
-    'Volume': ['sum', 'mean', 'std'],
-    'Revenue': ['sum', 'mean'],
-    'Cost': ['sum', 'mean']
-}).round(2)
-
-volume_summary.columns = ['Total Volume', 'Avg Daily Volume', 'Volume Std Dev', 
-                         'Total Revenue (€)', 'Avg Daily Revenue (€)',
-                         'Total Cost (€)', 'Avg Daily Cost (€)']
-st.dataframe(volume_summary, use_container_width=True)
-
-# OTP Analysis Section
-st.markdown('<h2 class="section-header">⏱️ On-Time Performance (OTP) Analysis</h2>', unsafe_allow_html=True)
-
-col1, col2 = st.columns(2)
-
-with col1:
-    st.markdown("**OTP Performance by Service Type**")
-    # OTP by service type
-    otp_by_service = df_volume_filtered.groupby('Service_Type')['OTP_Score'].mean()
-    st.bar_chart(otp_by_service)
+# Only proceed if data is loaded
+if tms_data is not None:
     
-    # Add target line information
-    st.markdown('<div class="highlight-box">🎯 <strong>Target OTP: 95%</strong><br>Red line indicates target performance level</div>', unsafe_allow_html=True)
-
-with col2:
-    st.markdown("**Weekly OTP Trends**")
-    # OTP trend over time
-    df_volume_filtered['Week'] = df_volume_filtered['Date'].dt.to_period('W')
-    weekly_otp = df_volume_filtered.groupby(['Week', 'Service_Type'])['OTP_Score'].mean().reset_index()
-    weekly_otp['Week'] = weekly_otp['Week'].dt.start_time
-    pivot_otp = weekly_otp.pivot(index='Week', columns='Service_Type', values='OTP_Score')
-    st.line_chart(pivot_otp)
-
-# OTP Statistics
-otp_stats = df_volume_filtered.groupby('Service_Type')['OTP_Score'].agg(['mean', 'std', 'min', 'max']).round(2)
-otp_stats.columns = ['Average OTP (%)', 'Std Deviation', 'Minimum OTP (%)', 'Maximum OTP (%)']
-st.dataframe(otp_stats, use_container_width=True)
-
-# Cost vs Sales Analysis
-st.markdown('<h2 class="section-header">💰 Cost vs. Sales Analysis</h2>', unsafe_allow_html=True)
-
-col1, col2 = st.columns(2)
-
-with col1:
-    st.markdown("**Monthly Revenue vs Cost**")
-    # Monthly aggregation
-    df_volume_filtered['Month'] = df_volume_filtered['Date'].dt.to_period('M')
-    monthly_data = df_volume_filtered.groupby('Month').agg({
-        'Revenue': 'sum',
-        'Cost': 'sum'
-    }).reset_index()
-    monthly_data['Month'] = monthly_data['Month'].dt.start_time
-    monthly_data = monthly_data.set_index('Month')
-    st.line_chart(monthly_data)
-
-with col2:
-    st.markdown("**Profit Margin by Service Type**")
-    service_financials = df_volume_filtered.groupby('Service_Type').agg({
-        'Revenue': 'sum',
-        'Cost': 'sum'
+    # Date filter (if applicable)
+    if 'cost_sales' in tms_data and not tms_data['cost_sales'].empty:
+        # Convert Excel date numbers to datetime
+        cost_df = tms_data['cost_sales'].copy()
+        if 'Order_Date' in cost_df.columns:
+            # Excel dates are stored as numbers - convert them
+            cost_df['Order_Date'] = pd.to_datetime(cost_df['Order_Date'], origin='1899-12-30', unit='D', errors='coerce')
+            min_date = cost_df['Order_Date'].min()
+            max_date = cost_df['Order_Date'].max()
+            
+            if pd.notna(min_date) and pd.notna(max_date):
+                date_range = st.sidebar.date_input(
+                    "Select Date Range",
+                    value=(min_date, max_date),
+                    min_value=min_date,
+                    max_value=max_date
+                )
+    
+    # Service type filter
+    service_types = ['AVS', 'LFS', 'SP', 'RP', 'CTX', 'SF']  # Based on your data
+    selected_services = st.sidebar.multiselect(
+        "Filter by Service Types",
+        options=service_types,
+        default=service_types,
+        help="Select service types to analyze"
+    )
+    
+    st.markdown("---")
+    
+    # ==== MAIN DASHBOARD CONTENT ====
+    
+    # KPI Metrics Row
+    col1, col2, col3, col4 = st.columns(4)
+    
+    # Calculate key metrics from actual data
+    
+    # Volume Metrics
+    if 'volume' in tms_data and not tms_data['volume'].empty:
+        volume_df = tms_data['volume']
+        # Process volume data - appears to be service type counts
+        total_volume = 0
+        if len(volume_df.columns) > 1:
+            # Extract numeric values from the volume sheet
+            for idx, row in volume_df.iterrows():
+                if len(row) > 1 and isinstance(row.iloc[1], (int, float)):
+                    total_volume += row.iloc[1]
+    else:
+        total_volume = 0
+    
+    # OTP Metrics  
+    if 'otp' in tms_data and not tms_data['otp'].empty:
+        otp_df = tms_data['otp']
+        # Calculate average OTP from the actual data
+        if 'Status' in otp_df.columns:
+            on_time_count = len(otp_df[otp_df['Status'] == 'ON TIME'])
+            total_orders = len(otp_df.dropna(subset=['Status']))
+            avg_otp = (on_time_count / total_orders * 100) if total_orders > 0 else 0
+        else:
+            avg_otp = 0
+    else:
+        avg_otp = 0
+    
+    # Financial Metrics
+    if 'cost_sales' in tms_data and not tms_data['cost_sales'].empty:
+        cost_df = tms_data['cost_sales']
+        total_revenue = cost_df['Net_Revenue'].sum() if 'Net_Revenue' in cost_df.columns else 0
+        total_cost = cost_df['Total_Cost'].sum() if 'Total_Cost' in cost_df.columns else 0
+        profit_margin = ((total_revenue - total_cost) / total_revenue * 100) if total_revenue > 0 else 0
+    else:
+        total_revenue = 0
+        profit_margin = 0
+    
+    with col1:
+        st.metric(
+            label="📦 Total Volume",
+            value=f"{int(total_volume):,}",
+            delta="Shipments processed"
+        )
+    
+    with col2:
+        st.metric(
+            label="⏰ OTP Performance",
+            value=f"{avg_otp:.1f}%",
+            delta=f"{avg_otp - 95:.1f}% vs 95% target",
+            delta_color="normal" if avg_otp >= 95 else "inverse"
+        )
+    
+    with col3:
+        st.metric(
+            label="💰 Total Revenue",
+            value=f"€{total_revenue:,.0f}",
+            delta="From cost-sales data"
+        )
+    
+    with col4:
+        st.metric(
+            label="📈 Profit Margin",
+            value=f"{profit_margin:.1f}%",
+            delta=f"{profit_margin - 20:.1f}% vs 20% target",
+            delta_color="normal" if profit_margin >= 20 else "inverse"
+        )
+    
+    st.markdown("---")
+    
+    # ==== VOLUME ANALYSIS SECTION ====
+    st.markdown('<h2 class="section-header">📊 Volume Analysis by Service Type</h2>', unsafe_allow_html=True)
+    
+    if 'volume' in tms_data and not tms_data['volume'].empty:
+        volume_df = tms_data['volume']
+        
+        # Process the volume data structure
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("**Service Type Volume Distribution**")
+            
+            # Create a clean volume dataset
+            volume_data = {}
+            for idx, row in volume_df.iterrows():
+                if len(row) >= 2 and pd.notna(row.iloc[0]) and isinstance(row.iloc[1], (int, float)):
+                    service = str(row.iloc[0])
+                    volume = row.iloc[1]
+                    if service not in ['Count of PIECES', 'SVC', 'Total']:
+                        volume_data[service] = volume
+            
+            if volume_data:
+                volume_series = pd.Series(volume_data)
+                st.bar_chart(volume_series)
+                
+                # Show volume table
+                st.markdown("**Volume Summary Table**")
+                volume_table = pd.DataFrame({
+                    'Service Type': volume_series.index,
+                    'Total Pieces': volume_series.values,
+                    'Percentage': (volume_series.values / volume_series.sum() * 100).round(1)
+                })
+                st.dataframe(volume_table, hide_index=True)
+        
+        with col2:
+            st.markdown("**Service Type Analysis**")
+            
+            if volume_data:
+                # Service type insights
+                top_service = max(volume_data, key=volume_data.get)
+                st.markdown(f"🏆 **Top Service**: {top_service} ({volume_data[top_service]} pieces)")
+                
+                # Service categorization based on your original requirements
+                service_categories = {
+                    'AVS': ['AVS'] if 'AVS' in volume_data else [],
+                    'LFS': ['LFS'] if 'LFS' in volume_data else [],
+                    'SP': ['SP'] if 'SP' in volume_data else [],
+                    'RP': ['RP'] if 'RP' in volume_data else [],
+                    'Other': [k for k in volume_data.keys() if k not in ['AVS', 'LFS', 'SP', 'RP']]
+                }
+                
+                st.markdown("**Service Categories:**")
+                for category, services in service_categories.items():
+                    if services:
+                        total_vol = sum(volume_data.get(s, 0) for s in services)
+                        st.write(f"• {category}: {total_vol} pieces ({services})")
+    
+    else:
+        st.warning("Volume data not available or empty")
+    
+    # ==== OTP ANALYSIS SECTION ====
+    st.markdown('<h2 class="section-header">⏱️ On-Time Performance (OTP) Analysis</h2>', unsafe_allow_html=True)
+    
+    if 'otp' in tms_data and not tms_data['otp'].empty:
+        otp_df = tms_data['otp']
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("**OTP Status Distribution**")
+            
+            if 'Status' in otp_df.columns:
+                status_counts = otp_df['Status'].value_counts()
+                st.bar_chart(status_counts)
+                
+                # Calculate detailed OTP metrics
+                total_orders = len(otp_df.dropna(subset=['Status']))
+                on_time_orders = len(otp_df[otp_df['Status'] == 'ON TIME'])
+                otp_percentage = (on_time_orders / total_orders * 100) if total_orders > 0 else 0
+                
+                st.markdown(f"""
+                <div class="highlight-box">
+                📊 <strong>OTP Summary:</strong><br>
+                • Total Orders: {total_orders:,}<br>
+                • On-Time Deliveries: {on_time_orders:,}<br>
+                • OTP Rate: {otp_percentage:.1f}%<br>
+                • Target Achievement: {'✅ Met' if otp_percentage >= 95 else '⚠️ Below Target'}
+                </div>
+                """, unsafe_allow_html=True)
+        
+        with col2:
+            st.markdown("**OTP Performance Details**")
+            
+            # Show OTP data table
+            if not otp_df.empty:
+                display_df = otp_df[['TMS_Order', 'Status', 'QDT', 'POD_DateTime']].head(10)
+                st.dataframe(display_df, hide_index=True)
+            
+            # Performance alerts
+            if otp_percentage < 95:
+                st.markdown(f"""
+                <div class="alert-box">
+                🚨 <strong>Performance Alert:</strong><br>
+                OTP is {95 - otp_percentage:.1f}% below the 95% target.<br>
+                Immediate action required to improve delivery performance.
+                </div>
+                """, unsafe_allow_html=True)
+    
+    else:
+        st.warning("OTP data not available or empty")
+    
+    # ==== COST VS SALES ANALYSIS ====
+    st.markdown('<h2 class="section-header">💰 Cost vs. Sales Analysis</h2>', unsafe_allow_html=True)
+    
+    if 'cost_sales' in tms_data and not tms_data['cost_sales'].empty:
+        cost_df = tms_data['cost_sales']
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("**Revenue vs Cost Overview**")
+            
+            # Financial summary
+            total_revenue = cost_df['Net_Revenue'].sum() if 'Net_Revenue' in cost_df.columns else 0
+            total_cost = cost_df['Total_Cost'].sum() if 'Total_Cost' in cost_df.columns else 0
+            total_profit = total_revenue - total_cost
+            
+            # Create financial overview chart
+            financial_data = pd.DataFrame({
+                'Metric': ['Revenue', 'Cost', 'Profit'],
+                'Amount': [total_revenue, total_cost, total_profit]
+            })
+            
+            st.bar_chart(financial_data.set_index('Metric'))
+            
+            st.markdown(f"""
+            <div class="highlight-box">
+            💼 <strong>Financial Overview:</strong><br>
+            • Total Revenue: €{total_revenue:,.2f}<br>
+            • Total Cost: €{total_cost:,.2f}<br>
+            • Net Profit: €{total_profit:,.2f}<br>
+            • Profit Margin: {profit_margin:.1f}%
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col2:
+            st.markdown("**Profitability by Account**")
+            
+            if 'Account_Name' in cost_df.columns and 'Gross_Percent' in cost_df.columns:
+                # Account profitability analysis
+                account_profit = cost_df.groupby('Account_Name').agg({
+                    'Net_Revenue': 'sum',
+                    'Total_Cost': 'sum',
+                    'Gross_Percent': 'mean'
+                }).round(2)
+                
+                account_profit['Profit'] = account_profit['Net_Revenue'] - account_profit['Total_Cost']
+                account_profit = account_profit.sort_values('Profit', ascending=False)
+                
+                # Show top 10 accounts
+                st.dataframe(account_profit.head(10))
+                
+                # Profitability alerts
+                low_margin_accounts = account_profit[account_profit['Gross_Percent'] < 0.1]
+                if not low_margin_accounts.empty:
+                    st.markdown(f"""
+                    <div class="alert-box">
+                    ⚠️ <strong>Low Margin Alert:</strong><br>
+                    {len(low_margin_accounts)} accounts have margins below 10%
+                    </div>
+                    """, unsafe_allow_html=True)
+        
+        # Daily/Monthly trend analysis
+        st.markdown("**Financial Trends Over Time**")
+        
+        if 'Order_Date' in cost_df.columns:
+            # Convert Excel dates and create time series
+            cost_df_time = cost_df.copy()
+            cost_df_time['Order_Date'] = pd.to_datetime(cost_df_time['Order_Date'], origin='1899-12-30', unit='D', errors='coerce')
+            cost_df_time = cost_df_time.dropna(subset=['Order_Date'])
+            
+            if not cost_df_time.empty:
+                # Weekly aggregation
+                cost_df_time['Week'] = cost_df_time['Order_Date'].dt.to_period('W')
+                weekly_financials = cost_df_time.groupby('Week').agg({
+                    'Net_Revenue': 'sum',
+                    'Total_Cost': 'sum'
+                }).reset_index()
+                
+                weekly_financials['Week'] = weekly_financials['Week'].dt.start_time
+                weekly_financials['Profit'] = weekly_financials['Net_Revenue'] - weekly_financials['Total_Cost']
+                
+                # Display trend chart
+                chart_data = weekly_financials.set_index('Week')[['Net_Revenue', 'Total_Cost', 'Profit']]
+                st.line_chart(chart_data)
+    
+    else:
+        st.warning("Cost/Sales data not available or empty")
+    
+    # ==== LANE USAGE ANALYSIS ====
+    st.markdown('<h2 class="section-header">🛣️ Lane Usage Analysis</h2>', unsafe_allow_html=True)
+    
+    if 'lanes' in tms_data and not tms_data['lanes'].empty:
+        lane_df = tms_data['lanes']
+        
+        st.markdown("**Origin-Destination Matrix**")
+        
+        # Process the lane usage matrix
+        # The data appears to be a pivot table with pickup countries as rows and delivery countries as columns
+        if len(lane_df.columns) > 1:
+            # Clean and display the matrix
+            lane_matrix = lane_df.copy()
+            
+            # Set the first column as index if it contains country codes
+            if not lane_matrix.empty and lane_matrix.iloc[0, 0] == 'PU CTRY':
+                # This is the header row format from your data
+                lane_matrix.columns = lane_matrix.iloc[1]  # Use row 1 as column headers
+                lane_matrix = lane_matrix.drop([0, 1])  # Drop header rows
+                lane_matrix = lane_matrix.set_index(lane_matrix.columns[0])  # Set first column as index
+                
+                # Clean the matrix - convert to numeric and fill NaN with 0
+                for col in lane_matrix.columns:
+                    if col is not None and col != '':
+                        lane_matrix[col] = pd.to_numeric(lane_matrix[col], errors='coerce').fillna(0)
+                
+                # Display the matrix
+                st.dataframe(lane_matrix.fillna(0))
+                
+                # Lane analysis insights
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown("**Top Origin Countries**")
+                    if not lane_matrix.empty:
+                        origin_totals = lane_matrix.sum(axis=1).sort_values(ascending=False)
+                        origin_totals = origin_totals[origin_totals > 0]
+                        st.bar_chart(origin_totals.head(10))
+                
+                with col2:
+                    st.markdown("**Top Destination Countries**")
+                    if not lane_matrix.empty:
+                        dest_totals = lane_matrix.sum(axis=0).sort_values(ascending=False)
+                        dest_totals = dest_totals[dest_totals > 0]
+                        st.bar_chart(dest_totals.head(10))
+                
+                # Lane utilization insights
+                total_shipments = lane_matrix.sum().sum()
+                active_lanes = (lane_matrix > 0).sum().sum()
+                
+                st.markdown(f"""
+                <div class="highlight-box">
+                🌍 <strong>Lane Usage Summary:</strong><br>
+                • Total Shipments: {int(total_shipments):,}<br>
+                • Active Lanes: {int(active_lanes)}<br>
+                • Average Shipments per Lane: {(total_shipments/active_lanes if active_lanes > 0 else 0):.1f}
+                </div>
+                """, unsafe_allow_html=True)
+        
+        else:
+            st.warning("Lane usage data format not recognized")
+    
+    else:
+        st.warning("Lane usage data not available or empty")
+    
+    # ==== PERFORMANCE ALERTS SECTION ====
+    st.markdown('<h2 class="section-header">🚨 Performance Alerts & Recommendations</h2>', unsafe_allow_html=True)
+    
+    alerts = []
+    recommendations = []
+    
+    # OTP Alerts
+    if avg_otp < 95:
+        alerts.append(f"🔴 OTP Performance: {avg_otp:.1f}% (Target: 95%)")
+        recommendations.append("• Implement delivery time tracking and route optimization")
+        recommendations.append("• Review carrier performance and SLA compliance")
+    
+    # Profit Margin Alerts
+    if profit_margin < 20:
+        alerts.append(f"🟡 Profit Margin: {profit_margin:.1f}% (Target: 20%)")
+        recommendations.append("• Review pricing strategy for low-margin accounts")
+        recommendations.append("• Optimize operational costs and improve efficiency")
+    
+    # Volume Distribution Alerts
+    if 'volume' in tms_data and not tms_data['volume'].empty:
+        # Check for service concentration risk
+        volume_df = tms_data['volume']
+        volume_data = {}
+        for idx, row in volume_df.iterrows():
+            if len(row) >= 2 and pd.notna(row.iloc[0]) and isinstance(row.iloc[1], (int, float)):
+                service = str(row.iloc[0])
+                volume = row.iloc[1]
+                if service not in ['Count of PIECES', 'SVC', 'Total']:
+                    volume_data[service] = volume
+        
+        if volume_data:
+            total_vol = sum(volume_data.values())
+            max_service_pct = max(volume_data.values()) / total_vol * 100
+            if max_service_pct > 50:
+                alerts.append(f"🟡 Service Concentration: {max_service_pct:.1f}% in single service type")
+                recommendations.append("• Diversify service portfolio to reduce concentration risk")
+    
+    # Display alerts
+    if alerts:
+        st.markdown("**🚨 Current Alerts:**")
+        for alert in alerts:
+            st.markdown(f"- {alert}")
+    else:
+        st.success("✅ All performance metrics within acceptable ranges!")
+    
+    # Display recommendations
+    if recommendations:
+        st.markdown("**💡 Recommended Actions:**")
+        for rec in recommendations:
+            st.markdown(rec)
+    
+    # ==== EXECUTIVE SUMMARY SECTION ====
+    st.markdown('<h2 class="section-header">📋 Executive Summary for Adam</h2>', unsafe_allow_html=True)
+    
+    # Create executive summary based on actual data
+    summary_data = []
+    
+    # Volume summary
+    if 'volume' in tms_data and not tms_data['volume'].empty:
+        summary_data.append({
+            'KPI': 'Total Volume',
+            'Value': f"{int(total_volume):,} pieces",
+            'Status': '✅ Good',
+            'Notes': 'Based on service type analysis'
+        })
+    
+    # OTP summary
+    summary_data.append({
+        'KPI': 'On-Time Performance',
+        'Value': f"{avg_otp:.1f}%",
+        'Status': '✅ Good' if avg_otp >= 95 else '⚠️ Below Target',
+        'Notes': f"Target: 95% | Gap: {95-avg_otp:.1f}%" if avg_otp < 95 else "Exceeds target"
     })
-    service_financials['Profit_Margin'] = ((service_financials['Revenue'] - service_financials['Cost']) / service_financials['Revenue']) * 100
-    st.bar_chart(service_financials['Profit_Margin'])
-
-# Financial summary
-financial_summary = df_volume_filtered.groupby('Service_Type').agg({
-    'Revenue': 'sum',
-    'Cost': 'sum'
-})
-financial_summary['Profit'] = financial_summary['Revenue'] - financial_summary['Cost']
-financial_summary['Profit_Margin_Percent'] = (financial_summary['Profit'] / financial_summary['Revenue'] * 100).round(2)
-financial_summary = financial_summary.round(2)
-st.dataframe(financial_summary, use_container_width=True)
-
-# Lane Usage Analysis
-st.markdown('<h2 class="section-header">🛣️ Lane Usage Analysis</h2>', unsafe_allow_html=True)
-
-# Filter lane data based on date range
-df_lanes_filtered = df_lanes[
-    (df_lanes['Date'] >= pd.to_datetime(date_range[0])) &
-    (df_lanes['Date'] <= pd.to_datetime(date_range[1]))
-]
-
-col1, col2 = st.columns(2)
-
-with col1:
-    st.markdown("**Average Lane Utilization**")
-    lane_util = df_lanes_filtered.groupby('Lane')['Utilization'].mean()
-    st.bar_chart(lane_util)
-    st.markdown('<div class="highlight-box">🎯 <strong>Target Utilization: 80%</strong></div>', unsafe_allow_html=True)
-
-with col2:
-    st.markdown("**Average Cost per Shipment by Lane**")
-    cost_by_lane = df_lanes_filtered.groupby('Lane')['Avg_Cost_Per_Shipment'].mean()
-    st.bar_chart(cost_by_lane)
-
-# Lane summary table
-lane_summary = df_lanes_filtered.groupby('Lane').agg({
-    'Utilization': ['mean', 'std'],
-    'Shipments': 'sum',
-    'Avg_Cost_Per_Shipment': 'mean'
-}).round(2)
-
-lane_summary.columns = ['Avg Utilization', 'Utilization Std Dev', 'Total Shipments', 'Avg Cost per Shipment (€)']
-st.dataframe(lane_summary, use_container_width=True)
-
-# Performance Alerts Section
-st.markdown('<h2 class="section-header">🚨 Performance Alerts</h2>', unsafe_allow_html=True)
-
-# Generate alerts based on thresholds
-alerts = []
-
-# OTP alerts
-for service in service_types:
-    service_otp = df_volume_filtered[df_volume_filtered['Service_Type'] == service]['OTP_Score'].mean()
-    if service_otp < 95:
-        alerts.append({
-            'Type': '⏰ OTP Alert',
-            'Service': service,
-            'Message': f'OTP below target: {service_otp:.1f}% (Target: 95%)',
-            'Severity': 'High' if service_otp < 90 else 'Medium'
+    
+    # Financial summary
+    summary_data.append({
+        'KPI': 'Revenue',
+        'Value': f"€{total_revenue:,.0f}",
+        'Status': '✅ Good',
+        'Notes': 'Total revenue from operations'
+    })
+    
+    summary_data.append({
+        'KPI': 'Profit Margin',
+        'Value': f"{profit_margin:.1f}%",
+        'Status': '✅ Good' if profit_margin >= 20 else '⚠️ Below Target',
+        'Notes': f"Target: 20% | Gap: {20-profit_margin:.1f}%" if profit_margin < 20 else "Exceeds target"
+    })
+    
+    # Lane utilization summary
+    if 'lanes' in tms_data and not tms_data['lanes'].empty:
+        summary_data.append({
+            'KPI': 'Lane Network',
+            'Value': 'Multi-country coverage',
+            'Status': '✅ Active',
+            'Notes': 'Europe-wide distribution network'
         })
+    
+    # Create summary table
+    summary_df = pd.DataFrame(summary_data)
+    st.dataframe(summary_df, hide_index=True, use_container_width=True)
+    
+    # Key insights for Adam
+    st.markdown(f"""
+    <div class="highlight-box">
+    <strong>🎯 Key Insights for Amsterdam Team:</strong><br><br>
+    
+    <strong>Strengths:</strong><br>
+    • Processing {int(total_volume):,} pieces across multiple service types<br>
+    • Revenue generation of €{total_revenue:,.0f}<br>
+    • Active European lane network<br><br>
+    
+    <strong>Areas for Improvement:</strong><br>
+    {'• OTP performance needs attention - currently ' + str(avg_otp) + '% vs 95% target<br>' if avg_otp < 95 else ''}
+    {'• Profit margins below target - currently ' + str(profit_margin) + '% vs 20% target<br>' if profit_margin < 20 else ''}
+    • Operational efficiency optimization opportunities<br><br>
+    
+    <strong>Immediate Actions:</strong><br>
+    • Review delivery processes to improve OTP<br>
+    • Analyze cost structure for margin improvement<br>
+    • Implement performance monitoring dashboard<br>
+    </div>
+    """, unsafe_allow_html=True)
 
-# Profit margin alerts
-for service in service_types:
-    service_data = df_volume_filtered[df_volume_filtered['Service_Type'] == service]
-    service_margin = ((service_data['Revenue'].sum() - service_data['Cost'].sum()) / service_data['Revenue'].sum()) * 100
-    if service_margin < 15:
-        alerts.append({
-            'Type': '💰 Margin Alert',
-            'Service': service,
-            'Message': f'Low profit margin: {service_margin:.1f}% (Target: 20%)',
-            'Severity': 'High' if service_margin < 10 else 'Medium'
-        })
-
-# Lane utilization alerts
-for lane in df_lanes_filtered['Lane'].unique():
-    lane_util = df_lanes_filtered[df_lanes_filtered['Lane'] == lane]['Utilization'].mean()
-    if lane_util < 0.6:
-        alerts.append({
-            'Type': '🛣️ Utilization Alert',
-            'Service': lane,
-            'Message': f'Low lane utilization: {lane_util:.1%} (Target: 80%)',
-            'Severity': 'Medium'
-        })
-
-if alerts:
-    alerts_df = pd.DataFrame(alerts)
-    st.dataframe(alerts_df, use_container_width=True, hide_index=True)
 else:
-    st.success("✅ All performance metrics within target ranges!")
-
-# Summary Statistics Table
-st.markdown('<h2 class="section-header">📋 Executive Summary</h2>', unsafe_allow_html=True)
-
-# Create executive summary
-summary_data = {
-    'Metric': [
-        'Total Volume (shipments)',
-        'Average OTP Score (%)',
-        'Total Revenue (€)',
-        'Total Profit (€)',
-        'Average Profit Margin (%)',
-        'Average Lane Utilization (%)'
-    ],
-    'Value': [
-        f"{df_volume_filtered['Volume'].sum():,}",
-        f"{df_volume_filtered['OTP_Score'].mean():.1f}%",
-        f"€{df_volume_filtered['Revenue'].sum():,.0f}",
-        f"€{(df_volume_filtered['Revenue'].sum() - df_volume_filtered['Cost'].sum()):,.0f}",
-        f"{profit_margin:.1f}%",
-        f"{df_lanes_filtered['Utilization'].mean():.1%}"
-    ],
-    'Target': [
-        'N/A',
-        '95.0%',
-        'N/A',
-        'N/A',
-        '20.0%',
-        '80.0%'
-    ],
-    'Status': [
-        '✅ Good',
-        '✅ Good' if df_volume_filtered['OTP_Score'].mean() >= 95 else '⚠️ Below Target',
-        '✅ Good',
-        '✅ Good' if profit_margin > 0 else '❌ Loss',
-        '✅ Good' if profit_margin >= 20 else '⚠️ Below Target',
-        '✅ Good' if df_lanes_filtered['Utilization'].mean() >= 0.8 else '⚠️ Below Target'
-    ]
-}
-
-summary_df = pd.DataFrame(summary_data)
-st.dataframe(summary_df, use_container_width=True, hide_index=True)
+    # Display sample data structure when no file is uploaded
+    st.markdown('<h2 class="section-header">📋 Expected Data Structure</h2>', unsafe_allow_html=True)
+    
+    st.info("""
+    **Please upload your 'report raw data.xls' file to see the analysis.**
+    
+    Expected sheets in your Excel file:
+    - **AMS RAW DATA**: Main shipment transaction data
+    - **OTP POD**: On-time performance and proof of delivery data  
+    - **Volume per SVC**: Volume analysis by service type (AVS, LFS, SP, RP, etc.)
+    - **Lane usage**: Origin-destination shipping matrix
+    - **cost sales**: Financial data including costs, revenue, and profit margins
+    """)
+    
+    # Sample data preview
+    st.markdown("**Sample Expected Data Format:**")
+    
+    sample_data = {
+        'Sheet': ['OTP POD', 'Volume per SVC', 'Lane usage', 'cost sales'],
+        'Purpose': [
+            'Track delivery performance vs promised dates',
+            'Analyze shipment volume by service type',
+            'Monitor shipping lanes and country pairs',
+            'Financial analysis of costs vs revenue'
+        ],
+        'Key Metrics': [
+            'OTP percentage, delivery status',
+            'Piece counts by service (CTX, SF, etc.)',
+            'Shipment counts by origin-destination',
+            'Revenue, costs, profit margins'
+        ]
+    }
+    
+    st.dataframe(pd.DataFrame(sample_data), hide_index=True)
 
 # Footer
 st.markdown("---")
-st.markdown("""
+st.markdown(f"""
 <div class="highlight-box">
-<strong>📋 Dashboard Notes:</strong><br>
-• Data reflects Amsterdam (LFS) office operations only<br>
-• Performance Targets: OTP ≥95% | Profit Margin ≥20% | Lane Utilization ≥80%<br>
-• Dashboard updates automatically with new data uploads<br>
-• For detailed analysis and recommendations, refer to the comprehensive report<br>
-• Contact: Dashboard created for Adam and the LFS Amsterdam team
+<strong>📊 Dashboard Information:</strong><br>
+• Created for: Adam and LFS Amsterdam Team<br>
+• Data Source: TMS Raw Data Export<br>
+• Last Updated: {datetime.now().strftime('%Y-%m-%d %H:%M')}<br>
+• Performance Targets: OTP ≥95% | Profit Margin ≥20%<br>
+• Contact: Dashboard Support Team
 </div>
 """, unsafe_allow_html=True)
 
 # Sidebar footer
 st.sidebar.markdown("---")
-st.sidebar.markdown("### 📊 Dashboard Statistics")
-st.sidebar.metric("Data Points", f"{len(df_volume_filtered):,}")
-st.sidebar.metric("Date Range", f"{(date_range[1] - date_range[0]).days} days")
-st.sidebar.metric("Service Types", len(service_types))
+st.sidebar.markdown("### 📊 Data Export")
+if tms_data is not None:
+    if st.sidebar.button("📋 Export Summary Report"):
+        if 'cost_sales' in tms_data:
+            csv_data = tms_data['cost_sales'].to_csv(index=False)
+            st.sidebar.download_button(
+                label="💾 Download CSV",
+                data=csv_data,
+                file_name=f"tms_summary_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv"
+            )
 
-st.sidebar.markdown("### ℹ️ System Info")
-st.sidebar.info(f"Last Updated: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-st.sidebar.info("Status: ✅ All systems operational")
-
-# Data export functionality
-st.sidebar.markdown("### 📥 Export Options")
-if st.sidebar.button("📊 Export Dashboard Data"):
-    # Create export data
-    export_data = df_volume_filtered.copy()
-    csv = export_data.to_csv(index=False)
-    st.sidebar.download_button(
-        label="💾 Download CSV",
-        data=csv,
-        file_name=f"tms_data_{datetime.now().strftime('%Y%m%d')}.csv",
-        mime="text/csv"
-    )
-
-if st.sidebar.button("📈 Export Summary Report"):
-    st.sidebar.download_button(
-        label="💾 Download Summary",
-        data=summary_df.to_csv(index=False),
-        file_name=f"tms_summary_{datetime.now().strftime('%Y%m%d')}.csv",
-        mime="text/csv"
-    )
+st.sidebar.markdown("### ℹ️ System Status")
+st.sidebar.info("✅ Dashboard operational")
+if tms_data is not None:
+    st.sidebar.success(f"📊 Data loaded: {len(tms_data)} datasets")
+else:
+    st.sidebar.warning("📁 Awaiting data upload")
