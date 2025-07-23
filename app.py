@@ -56,16 +56,24 @@ st.markdown("""
         border-radius: 0.5rem;
         margin: 1rem 0;
     }
+    .explanation-text {
+        background-color: #f8f9fa;
+        padding: 0.8rem;
+        border-radius: 0.3rem;
+        font-size: 0.9rem;
+        color: #555;
+        margin-top: 0.5rem;
+        border-left: 3px solid #1f77b4;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 # Title and header
-st.markdown('<h1 class="main-header">🚛 LFS Amsterdam - TMS Performance Dashboard</h1>', unsafe_allow_html=True)
+st.markdown('<h1 class="main-header">LFS Amsterdam - TMS Performance Dashboard</h1>', unsafe_allow_html=True)
 st.markdown("**Transportation Management System Analytics & KPI Monitoring**")
-st.markdown("*Based on TMS Raw Data Analysis*")
 
 # Sidebar for controls
-st.sidebar.title("📋 Dashboard Controls")
+st.sidebar.title("Dashboard Controls")
 st.sidebar.markdown("---")
 
 # File upload section
@@ -79,15 +87,11 @@ uploaded_file = st.sidebar.file_uploader(
 def safe_date_conversion(date_series):
     """Safely convert Excel date numbers to datetime"""
     try:
-        # Try different conversion methods
         if date_series.dtype in ['int64', 'float64']:
-            # Excel date numbers (days since 1900-01-01, but Excel treats 1900 as leap year)
             return pd.to_datetime(date_series, origin='1899-12-30', unit='D', errors='coerce')
         else:
-            # Try direct conversion for string dates
             return pd.to_datetime(date_series, errors='coerce')
     except:
-        # If all else fails, return the original series
         return date_series
 
 # Function to load and process the actual Excel data
@@ -96,28 +100,22 @@ def load_tms_data(uploaded_file):
     """Load and process the actual TMS Excel file"""
     if uploaded_file is not None:
         try:
-            # Read all sheets from the Excel file
             excel_sheets = pd.read_excel(uploaded_file, sheet_name=None)
-            
-            # Process each sheet according to the actual structure
             data = {}
             
             # 1. OTP POD Sheet Processing
             if "OTP POD" in excel_sheets:
                 otp_df = excel_sheets["OTP POD"].copy()
-                # Clean column names
                 if len(otp_df.columns) >= 6:
                     otp_df.columns = ['TMS_Order', 'QDT', 'POD_DateTime', 'Time_Diff', 'Status', 'QC_Name'] + [f'Col_{i}' for i in range(6, len(otp_df.columns))]
-                # Remove empty rows
                 otp_df = otp_df.dropna(subset=[otp_df.columns[0]])
-                # Convert dates safely
                 if 'QDT' in otp_df.columns:
                     otp_df['QDT'] = safe_date_conversion(otp_df['QDT'])
                 if 'POD_DateTime' in otp_df.columns:
                     otp_df['POD_DateTime'] = safe_date_conversion(otp_df['POD_DateTime'])
                 data['otp'] = otp_df
             
-            # 2. Volume per SVC Sheet Processing  
+            # 2. Volume per SVC Sheet Processing (actually country codes)
             if "Volume per SVC" in excel_sheets:
                 volume_df = excel_sheets["Volume per SVC"].copy()
                 volume_df = volume_df.dropna(how='all')
@@ -128,26 +126,23 @@ def load_tms_data(uploaded_file):
                 lane_df = excel_sheets["Lane usage "].copy()
                 data['lanes'] = lane_df
             
-            # 4. Cost Sales Sheet Processing - FIX THE DATE CONVERSION HERE
+            # 4. Cost Sales Sheet Processing
             if "cost sales" in excel_sheets:
                 cost_df = excel_sheets["cost sales"].copy()
-                # Clean column names
                 expected_cols = ['Order_Date', 'Account', 'Account_Name', 'Office', 'Order_Num', 
                                'PU_Cost', 'Ship_Cost', 'Man_Cost', 'Del_Cost', 'Total_Cost',
                                'Net_Revenue', 'Currency', 'Diff', 'Gross_Percent', 'Invoice_Num',
                                'Total_Amount', 'Status', 'PU_Country']
                 
-                # Assign column names up to available columns
                 new_cols = expected_cols[:len(cost_df.columns)]
                 cost_df.columns = new_cols
                 
-                # Safe date conversion - THIS IS THE FIX
                 if 'Order_Date' in cost_df.columns:
                     cost_df['Order_Date'] = safe_date_conversion(cost_df['Order_Date'])
                 
                 data['cost_sales'] = cost_df
             
-            # 5. AMS RAW DATA Sheet Processing (main dataset)
+            # 5. AMS RAW DATA Sheet Processing
             if "AMS RAW DATA" in excel_sheets:
                 raw_df = excel_sheets["AMS RAW DATA"].copy()
                 data['raw_data'] = raw_df
@@ -165,50 +160,114 @@ tms_data = None
 if uploaded_file is not None:
     tms_data = load_tms_data(uploaded_file)
     if tms_data:
-        st.sidebar.success("✅ TMS Data loaded successfully!")
+        st.sidebar.success("TMS Data loaded successfully")
         st.sidebar.write("Available datasets:", list(tms_data.keys()))
     else:
-        st.sidebar.error("❌ Error loading TMS data")
+        st.sidebar.error("Error loading TMS data")
 else:
-    st.sidebar.info("📁 Please upload your 'report raw data.xls' file to begin analysis")
+    st.sidebar.info("Please upload your TMS data file to begin analysis")
 
 # Create tab structure
-tab1, tab2 = st.tabs(["📊 Dashboard & Analytics", "📋 Comprehensive Report"])
+tab1, tab2, tab3, tab4 = st.tabs(["Data Overview", "Dashboard & Analytics", "OTP Deep Dive", "Comprehensive Report"])
 
-# TAB 1: Dashboard and Analytics
+# TAB 1: Data Overview
 with tab1:
+    st.markdown('<h2 class="section-header">Data Overview</h2>', unsafe_allow_html=True)
+    
     if tms_data is not None:
         
-        # Service type filter
-        service_types = ['AVS', 'LFS', 'SP', 'RP', 'CTX', 'SF']
-        selected_services = st.sidebar.multiselect(
-            "Filter by Service Types",
-            options=service_types,
-            default=service_types,
-            help="Select service types to analyze"
-        )
+        # Dataset summary
+        col1, col2 = st.columns(2)
         
-        st.markdown("---")
+        with col1:
+            st.markdown("**Dataset Summary**")
+            
+            dataset_info = []
+            for sheet_name, df in tms_data.items():
+                dataset_info.append({
+                    'Sheet': sheet_name,
+                    'Rows': len(df),
+                    'Columns': len(df.columns),
+                    'Data Quality': 'Good' if not df.empty else 'Empty'
+                })
+            
+            dataset_df = pd.DataFrame(dataset_info)
+            st.dataframe(dataset_df, hide_index=True)
         
-        # Calculate key metrics from actual data
+        with col2:
+            st.markdown("**Data Completeness**")
+            
+            if 'raw_data' in tms_data:
+                raw_df = tms_data['raw_data']
+                completeness = (raw_df.notna().sum() / len(raw_df) * 100).round(1)
+                
+                # Show top 10 columns with completeness
+                completeness_df = pd.DataFrame({
+                    'Column': completeness.head(10).index,
+                    'Completeness %': completeness.head(10).values
+                })
+                st.dataframe(completeness_df, hide_index=True)
         
-        # Volume Metrics
+        # Sample data preview
+        st.markdown("**Sample Data Preview**")
+        
+        for sheet_name, df in tms_data.items():
+            if not df.empty:
+                with st.expander(f"{sheet_name} - Sample Data"):
+                    st.dataframe(df.head(3))
+        
+        # Data quality indicators
+        st.markdown("**Data Quality Indicators**")
+        
+        quality_metrics = {}
+        
+        if 'otp' in tms_data and not tms_data['otp'].empty:
+            otp_df = tms_data['otp']
+            quality_metrics['OTP Data'] = {
+                'Total Records': len(otp_df),
+                'Complete Status Records': len(otp_df.dropna(subset=['Status'])),
+                'Date Consistency': 'Good' if 'QDT' in otp_df.columns else 'Missing'
+            }
+        
+        if 'cost_sales' in tms_data and not tms_data['cost_sales'].empty:
+            cost_df = tms_data['cost_sales']
+            quality_metrics['Financial Data'] = {
+                'Total Transactions': len(cost_df),
+                'Revenue Records': len(cost_df.dropna(subset=['Net_Revenue'])),
+                'Cost Records': len(cost_df.dropna(subset=['Total_Cost']))
+            }
+        
+        for metric_name, metrics in quality_metrics.items():
+            st.markdown(f"**{metric_name}:**")
+            for key, value in metrics.items():
+                st.write(f"• {key}: {value}")
+    
+    else:
+        st.info("Upload your TMS data file to see data overview and quality metrics.")
+
+# TAB 2: Dashboard & Analytics
+with tab2:
+    if tms_data is not None:
+        
+        # Calculate key metrics
         total_volume = 0
-        volume_data = {}
+        volume_by_country = {}
+        
+        # Process volume data (by country, not service)
         if 'volume' in tms_data and not tms_data['volume'].empty:
             volume_df = tms_data['volume']
             for idx, row in volume_df.iterrows():
                 if len(row) >= 2 and pd.notna(row.iloc[0]) and pd.notna(row.iloc[1]):
                     try:
-                        service = str(row.iloc[0]).strip()
+                        country = str(row.iloc[0]).strip()
                         volume = float(row.iloc[1]) if isinstance(row.iloc[1], (int, float)) else 0
-                        if service not in ['Count of PIECES', 'SVC', 'Total', ''] and volume > 0:
-                            volume_data[service] = volume
+                        if country not in ['Count of PIECES', 'SVC', 'Total', ''] and volume > 0:
+                            volume_by_country[country] = volume
                             total_volume += volume
                     except:
                         continue
         
-        # OTP Metrics  
+        # OTP Metrics
         avg_otp = 0
         total_orders = 0
         on_time_orders = 0
@@ -237,439 +296,364 @@ with tab1:
         
         with col1:
             st.metric(
-                label="📦 Total Volume",
+                label="Total Volume",
                 value=f"{int(total_volume):,}",
                 delta="Pieces processed"
             )
         
         with col2:
             st.metric(
-                label="⏰ OTP Performance",
+                label="OTP Performance",
                 value=f"{avg_otp:.1f}%",
-                delta=f"{avg_otp - 95:.1f}% vs 95% target",
+                delta=f"{avg_otp - 95:.1f}% vs target",
                 delta_color="normal" if avg_otp >= 95 else "inverse"
             )
         
         with col3:
             st.metric(
-                label="💰 Total Revenue",
+                label="Total Revenue",
                 value=f"€{total_revenue:,.0f}",
-                delta="From operations"
+                delta="Operational revenue"
             )
         
         with col4:
             st.metric(
-                label="📈 Profit Margin",
+                label="Profit Margin",
                 value=f"{profit_margin:.1f}%",
-                delta=f"{profit_margin - 20:.1f}% vs 20% target",
+                delta=f"{profit_margin - 20:.1f}% vs target",
                 delta_color="normal" if profit_margin >= 20 else "inverse"
             )
         
         st.markdown("---")
         
-        # Volume Analysis Section
-        st.markdown('<h2 class="section-header">📊 Volume Analysis by Service Type</h2>', unsafe_allow_html=True)
+        # Volume Analysis by Country
+        st.markdown('<h2 class="section-header">Volume Analysis by Country</h2>', unsafe_allow_html=True)
         
-        if volume_data:
+        if volume_by_country:
             col1, col2 = st.columns(2)
             
             with col1:
-                st.markdown("**Service Type Volume Distribution**")
-                volume_series = pd.Series(volume_data)
+                st.markdown("**Volume Distribution by Country**")
+                volume_series = pd.Series(volume_by_country)
                 st.bar_chart(volume_series)
                 
-                # Volume insights
-                top_service = max(volume_data, key=volume_data.get)
-                st.markdown(f"🏆 **Top Service**: {top_service} ({volume_data[top_service]:.0f} pieces)")
+                st.markdown('<div class="explanation-text">This chart shows shipment volume distribution across different countries. Country codes represent pickup or delivery locations, with higher bars indicating greater shipping activity to/from that country.</div>', unsafe_allow_html=True)
             
             with col2:
-                st.markdown("**Volume Summary Table**")
+                st.markdown("**Country Volume Table**")
                 volume_table = pd.DataFrame({
-                    'Service Type': volume_series.index,
+                    'Country Code': volume_series.index,
                     'Total Pieces': volume_series.values.astype(int),
                     'Percentage': (volume_series.values / volume_series.sum() * 100).round(1)
                 })
                 st.dataframe(volume_table, hide_index=True)
                 
-                # Service analysis
-                st.markdown("**Key Insights:**")
-                st.markdown(f"• **{len(volume_data)} service types** currently active")
-                st.markdown(f"• **Highest volume**: {top_service} service")
-                st.markdown(f"• **Total pieces**: {int(total_volume):,} processed")
+                top_country = max(volume_by_country, key=volume_by_country.get)
+                st.markdown(f"**Top Market**: {top_country} ({volume_by_country[top_country]:.0f} pieces)")
         
-        # OTP Analysis Section
-        st.markdown('<h2 class="section-header">⏱️ On-Time Performance Analysis</h2>', unsafe_allow_html=True)
-        
-        if 'otp' in tms_data and not tms_data['otp'].empty:
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.markdown("**OTP Status Distribution**")
-                otp_df = tms_data['otp']
-                if 'Status' in otp_df.columns:
-                    status_counts = otp_df['Status'].value_counts()
-                    st.bar_chart(status_counts)
-            
-            with col2:
-                st.markdown(f"""
-                <div class="highlight-box">
-                📊 <strong>OTP Performance Summary:</strong><br><br>
-                • <strong>Total Orders:</strong> {total_orders:,}<br>
-                • <strong>On-Time Deliveries:</strong> {on_time_orders:,}<br>
-                • <strong>OTP Rate:</strong> {avg_otp:.1f}%<br>
-                • <strong>Target Achievement:</strong> {'✅ Exceeds Target' if avg_otp >= 95 else '⚠️ Below 95% Target'}<br><br>
-                
-                <strong>Performance Status:</strong><br>
-                {'🟢 Excellent performance - maintaining industry standards' if avg_otp >= 95 else '🟡 Improvement needed - focus on delivery optimization'}
-                </div>
-                """, unsafe_allow_html=True)
-        
-        # Cost vs Sales Analysis
-        st.markdown('<h2 class="section-header">💰 Financial Performance Analysis</h2>', unsafe_allow_html=True)
+        # Enhanced Financial Analysis
+        st.markdown('<h2 class="section-header">Financial Performance Analysis</h2>', unsafe_allow_html=True)
         
         if 'cost_sales' in tms_data and not tms_data['cost_sales'].empty:
             cost_df = tms_data['cost_sales']
             
+            # Revenue vs Cost Analysis
             col1, col2 = st.columns(2)
             
             with col1:
-                st.markdown("**Revenue vs Cost Overview**")
+                st.markdown("**Revenue vs Cost Breakdown**")
                 
-                financial_data = pd.DataFrame({
-                    'Metric': ['Revenue', 'Cost', 'Profit'],
-                    'Amount': [total_revenue, total_cost, total_revenue - total_cost]
-                })
-                st.bar_chart(financial_data.set_index('Metric'))
+                # Cost component analysis
+                cost_components = {}
+                if 'PU_Cost' in cost_df.columns:
+                    cost_components['Pickup Cost'] = cost_df['PU_Cost'].sum()
+                if 'Ship_Cost' in cost_df.columns:
+                    cost_components['Shipping Cost'] = cost_df['Ship_Cost'].sum()
+                if 'Man_Cost' in cost_df.columns:
+                    cost_components['Manual Cost'] = cost_df['Man_Cost'].sum()
+                if 'Del_Cost' in cost_df.columns:
+                    cost_components['Delivery Cost'] = cost_df['Del_Cost'].sum()
+                
+                if cost_components:
+                    cost_series = pd.Series(cost_components)
+                    st.bar_chart(cost_series)
+                    
+                    st.markdown('<div class="explanation-text">Cost breakdown shows the relative contribution of different operational components. Pickup and delivery costs typically represent the highest operational expenses, while manual handling costs vary based on service complexity.</div>', unsafe_allow_html=True)
             
             with col2:
-                st.markdown("**Account Performance Analysis**")
+                st.markdown("**Profitability Analysis**")
                 
-                if 'Account_Name' in cost_df.columns:
-                    account_summary = cost_df.groupby('Account_Name').agg({
-                        'Net_Revenue': 'sum',
-                        'Total_Cost': 'sum'
-                    }).round(0)
-                    account_summary['Profit'] = account_summary['Net_Revenue'] - account_summary['Total_Cost']
-                    account_summary = account_summary.sort_values('Net_Revenue', ascending=False).head(5)
+                # Margin distribution
+                if 'Gross_Percent' in cost_df.columns:
+                    margin_bins = pd.cut(cost_df['Gross_Percent'], bins=[-1, 0, 0.1, 0.2, 0.3, 1], labels=['Loss', '0-10%', '10-20%', '20-30%', '30%+'])
+                    margin_dist = margin_bins.value_counts()
+                    st.bar_chart(margin_dist)
                     
-                    st.dataframe(account_summary)
+                    st.markdown('<div class="explanation-text">Margin distribution analysis shows profitability spread across shipments. Higher percentages in the 20%+ categories indicate healthy profit margins, while loss-making shipments require investigation for cost optimization.</div>', unsafe_allow_html=True)
+            
+            # Financial Performance by Country
+            st.markdown("**Financial Performance by Country**")
+            
+            if 'PU_Country' in cost_df.columns:
+                country_financials = cost_df.groupby('PU_Country').agg({
+                    'Net_Revenue': 'sum',
+                    'Total_Cost': 'sum',
+                    'Gross_Percent': 'mean'
+                }).round(2)
+                
+                country_financials['Profit'] = country_financials['Net_Revenue'] - country_financials['Total_Cost']
+                country_financials = country_financials.sort_values('Net_Revenue', ascending=False)
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown("**Revenue by Country**")
+                    st.bar_chart(country_financials['Net_Revenue'])
+                    
+                    st.markdown('<div class="explanation-text">Revenue distribution by pickup country shows market concentration and identifies key geographic markets. This helps in resource allocation and market development strategies.</div>', unsafe_allow_html=True)
+                
+                with col2:
+                    st.markdown("**Profit Margin by Country**")
+                    st.bar_chart(country_financials['Gross_Percent'])
+                    
+                    st.markdown('<div class="explanation-text">Profit margin variation by country reveals operational efficiency differences across markets. Countries with lower margins may require cost optimization or pricing adjustments.</div>', unsafe_allow_html=True)
+                
+                # Detailed financial table
+                st.markdown("**Detailed Financial Performance by Country**")
+                st.dataframe(country_financials)
         
         # Lane Usage Analysis
-        st.markdown('<h2 class="section-header">🛣️ Lane Usage Analysis</h2>', unsafe_allow_html=True)
+        st.markdown('<h2 class="section-header">Lane Usage Analysis</h2>', unsafe_allow_html=True)
         
         if 'lanes' in tms_data and not tms_data['lanes'].empty:
             lane_df = tms_data['lanes']
             
-            st.markdown("**European Distribution Network**")
+            st.markdown("**Origin-Destination Matrix**")
+            st.dataframe(lane_df.fillna(0))
             
-            # Display the lane matrix
-            if len(lane_df) > 2:
-                # Process lane matrix
-                display_df = lane_df.copy()
-                
-                # Clean and show matrix
-                st.dataframe(display_df.fillna(0))
-                
-                st.markdown("""
-                <div class="highlight-box">
-                🌍 <strong>Network Coverage:</strong><br>
-                • <strong>European Focus:</strong> Comprehensive coverage across major European markets<br>
-                • <strong>Hub Operations:</strong> Netherlands (NL) as central distribution hub<br>
-                • <strong>Key Markets:</strong> Germany (DE), France (FR), UK (GB), Italy (IT)<br>
-                • <strong>Specialized Routes:</strong> Optimized for pharmaceutical and clinical logistics
-                </div>
-                """, unsafe_allow_html=True)
-        
-        # Performance Alerts
-        st.markdown('<h2 class="section-header">🚨 Performance Alerts & Recommendations</h2>', unsafe_allow_html=True)
-        
-        alerts = []
-        recommendations = []
-        
-        # Generate alerts based on actual data
-        if avg_otp < 95 and total_orders > 0:
-            alerts.append(f"🔴 OTP Performance: {avg_otp:.1f}% (Target: 95%)")
-            recommendations.append("• Implement delivery time optimization")
-            recommendations.append("• Review carrier performance and routing")
-        
-        if profit_margin < 20 and total_revenue > 0:
-            alerts.append(f"🟡 Profit Margin: {profit_margin:.1f}% (Target: 20%)")
-            recommendations.append("• Review pricing strategy")
-            recommendations.append("• Optimize operational costs")
-        
-        if alerts:
-            st.markdown("**🚨 Current Alerts:**")
-            for alert in alerts:
-                st.markdown(f"- {alert}")
-            
-            if recommendations:
-                st.markdown("**💡 Recommended Actions:**")
-                for rec in recommendations:
-                    st.markdown(rec)
-        else:
-            st.success("✅ All performance metrics within acceptable ranges!")
-        
+            st.markdown('<div class="explanation-text">The lane usage matrix shows shipment volumes between origin and destination countries. This analysis helps identify high-traffic corridors, optimize routing decisions, and plan capacity allocation across the European network.</div>', unsafe_allow_html=True)
+    
     else:
-        # Display when no data is uploaded
-        st.markdown('<h2 class="section-header">📁 Upload Your TMS Data</h2>', unsafe_allow_html=True)
-        
-        st.info("""
-        **Please upload your 'report raw data.xls' file to see the analysis.**
-        
-        The dashboard will automatically process:
-        - **Volume Analysis** by service type (CTX, SF, etc.)
-        - **OTP Performance** tracking and alerts
-        - **Financial Analysis** with cost vs revenue
-        - **Lane Usage** across European network
-        - **Performance Alerts** and recommendations
-        """)
+        st.info("Upload your TMS data file to see dashboard analytics.")
 
-# TAB 2: Comprehensive Report
-with tab2:
-    st.markdown('<h1 class="section-header">📋 TMS Performance Analysis Report</h1>', unsafe_allow_html=True)
+# TAB 3: OTP Deep Dive
+with tab3:
+    st.markdown('<h2 class="section-header">On-Time Performance Deep Dive</h2>', unsafe_allow_html=True)
+    
+    if tms_data is not None and 'otp' in tms_data:
+        otp_df = tms_data['otp']
+        
+        # OTP Status Analysis
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("**OTP Status Distribution**")
+            if 'Status' in otp_df.columns:
+                status_counts = otp_df['Status'].value_counts()
+                st.bar_chart(status_counts)
+                
+                st.markdown('<div class="explanation-text">Overall delivery status distribution showing the proportion of on-time versus delayed deliveries. A healthy operation should maintain above 95% on-time performance.</div>', unsafe_allow_html=True)
+        
+        with col2:
+            st.markdown("**Delay Analysis**")
+            
+            # Analyze delays
+            if 'Time_Diff' in otp_df.columns and 'Status' in otp_df.columns:
+                delayed_orders = otp_df[otp_df['Status'] != 'ON TIME']
+                
+                if not delayed_orders.empty and 'Time_Diff' in delayed_orders.columns:
+                    delay_analysis = delayed_orders['Time_Diff'].describe()
+                    
+                    delay_df = pd.DataFrame({
+                        'Metric': ['Count', 'Mean Delay', 'Std Dev', 'Min Delay', 'Max Delay'],
+                        'Value': [delay_analysis['count'], delay_analysis['mean'], 
+                                delay_analysis['std'], delay_analysis['min'], delay_analysis['max']]
+                    })
+                    st.dataframe(delay_df, hide_index=True)
+                
+                st.markdown('<div class="explanation-text">Delay analysis quantifies the severity and distribution of late deliveries. Understanding delay patterns helps identify root causes and implement targeted improvements.</div>', unsafe_allow_html=True)
+        
+        # Late Delivery Classification
+        if 'Status' in otp_df.columns:
+            st.markdown("**Late Delivery Classification & Root Cause Analysis**")
+            
+            # Get all non-on-time statuses
+            delayed_df = otp_df[otp_df['Status'] != 'ON TIME']
+            
+            if not delayed_df.empty:
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown("**Delay Categories**")
+                    delay_categories = delayed_df['Status'].value_counts()
+                    st.bar_chart(delay_categories)
+                    
+                    st.markdown('<div class="explanation-text">Classification of different types of delays helps identify specific operational issues. Each category requires different remediation strategies.</div>', unsafe_allow_html=True)
+                
+                with col2:
+                    st.markdown("**Delay Impact Analysis**")
+                    
+                    # Calculate delay impact
+                    total_delayed = len(delayed_df)
+                    delay_rate = (total_delayed / len(otp_df) * 100) if len(otp_df) > 0 else 0
+                    
+                    impact_metrics = pd.DataFrame({
+                        'Metric': ['Total Delayed Orders', 'Delay Rate (%)', 'On-Time Orders', 'OTP Achievement (%)'],
+                        'Value': [total_delayed, f"{delay_rate:.1f}%", len(otp_df) - total_delayed, f"{100 - delay_rate:.1f}%"]
+                    })
+                    st.dataframe(impact_metrics, hide_index=True)
+        
+        # Time-based OTP Analysis
+        if 'QDT' in otp_df.columns and 'POD_DateTime' in otp_df.columns:
+            st.markdown("**Time-based OTP Trends**")
+            
+            # Convert dates and analyze trends
+            otp_df_clean = otp_df.dropna(subset=['QDT', 'Status'])
+            
+            if not otp_df_clean.empty:
+                # Group by date and calculate daily OTP
+                otp_df_clean['Date'] = pd.to_datetime(otp_df_clean['QDT']).dt.date
+                daily_otp = otp_df_clean.groupby('Date').agg({
+                    'Status': lambda x: (x == 'ON TIME').mean() * 100
+                }).round(1)
+                
+                daily_otp.columns = ['Daily_OTP']
+                
+                if len(daily_otp) > 1:
+                    st.line_chart(daily_otp)
+                    
+                    st.markdown('<div class="explanation-text">Daily OTP trends reveal performance patterns over time. Consistent performance above 95% indicates stable operations, while volatility suggests process inconsistencies requiring attention.</div>', unsafe_allow_html=True)
+        
+        # Quality Control Analysis
+        if 'QC_Name' in otp_df.columns:
+            st.markdown("**Quality Control Impact**")
+            
+            qc_analysis = otp_df.groupby('QC_Name').agg({
+                'Status': lambda x: (x == 'ON TIME').mean() * 100
+            }).round(1)
+            
+            qc_analysis.columns = ['OTP_Rate']
+            qc_analysis = qc_analysis.sort_values('OTP_Rate', ascending=False)
+            
+            if not qc_analysis.empty:
+                st.bar_chart(qc_analysis)
+                
+                st.markdown('<div class="explanation-text">Quality control performance analysis shows how different QC processes or personnel impact delivery performance. This helps identify training needs and process improvements.</div>', unsafe_allow_html=True)
+    
+    else:
+        st.info("OTP data not available for deep dive analysis.")
+
+# TAB 4: Comprehensive Report
+with tab4:
+    st.markdown('<h1 class="section-header">TMS Performance Analysis Report</h1>', unsafe_allow_html=True)
     st.markdown("**LFS Amsterdam Office - Comprehensive Transportation Management Review**")
     
     if tms_data is not None:
-        # Generate report based on actual data
-        st.markdown(f"""
+        # Executive Summary
+        st.markdown("""
         <div class="report-section">
         <h3>Executive Summary</h3>
         
-        This comprehensive analysis examines the Transportation Management System (TMS) performance for the Amsterdam office (LFS) based on actual operational data extracted from five key datasets.
+        This comprehensive analysis examines the Transportation Management System (TMS) performance for the Amsterdam office (LFS) based on operational data extracted from multiple datasets. The analysis covers volume distribution, on-time performance, cost efficiency, and lane utilization patterns.
         
-        <strong>📊 Data Overview:</strong>
+        <strong>Key Performance Areas:</strong>
         <ul>
-        <li><strong>Datasets Processed:</strong> {len(tms_data)} sheets from TMS export</li>
-        <li><strong>Analysis Period:</strong> Based on available transaction data</li>
-        <li><strong>Report Date:</strong> {datetime.now().strftime('%Y-%m-%d')}</li>
+        <li><strong>Volume Analysis:</strong> Geographic distribution and market concentration analysis</li>
+        <li><strong>Financial Performance:</strong> Revenue, cost structure, and profitability assessment</li>
+        <li><strong>Operational Excellence:</strong> On-time performance and quality metrics</li>
+        <li><strong>Network Optimization:</strong> Lane usage and routing efficiency</li>
         </ul>
         </div>
         """, unsafe_allow_html=True)
         
-        # Volume Analysis Section
-        if 'volume' in tms_data:
-            st.markdown("""
-            <div class="report-section">
-            <h3>📦 Volume Analysis</h3>
-            
-            <strong>Service Portfolio Overview:</strong><br>
-            Your TMS data reveals a diversified service portfolio with specialized focus on pharmaceutical and clinical logistics.
-            
-            <strong>Key Service Types Identified:</strong>
-            <ul>
-            <li><strong>CTX (Clinical Express):</strong> Specialized pharmaceutical and clinical sample transportation</li>
-            <li><strong>SF (Standard Freight):</strong> Regular freight services providing baseline volume</li>
-            <li><strong>Additional Services:</strong> Multiple service codes indicating specialized offerings</li>
-            </ul>
-            
-            <strong>Strategic Insights:</strong>
-            <ul>
-            <li>Clinical Express services indicate specialization in high-value pharmaceutical logistics</li>
-            <li>Service diversification reduces dependency risk and provides revenue stability</li>
-            <li>European market focus with multi-country service delivery capability</li>
-            </ul>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        # OTP Analysis Section
-        if 'otp' in tms_data:
-            st.markdown(f"""
-            <div class="report-section">
-            <h3>⏰ On-Time Performance Analysis</h3>
-            
-            <strong>Performance Measurement Framework:</strong><br>
-            Your TMS system tracks detailed OTP metrics through comprehensive delivery monitoring.
-            
-            <strong>Current Performance Status:</strong>
-            <ul>
-            <li><strong>Total Orders Tracked:</strong> {total_orders:,}</li>
-            <li><strong>On-Time Deliveries:</strong> {on_time_orders:,}</li>
-            <li><strong>OTP Achievement:</strong> {avg_otp:.1f}%</li>
-            <li><strong>Target Performance:</strong> 95% industry standard</li>
-            </ul>
-            
-            <strong>Performance Assessment:</strong><br>
-            {'🟢 <em>Excellent Performance:</em> Your OTP rate exceeds industry standards, indicating strong operational control and customer service excellence.' if avg_otp >= 95 else '🟡 <em>Improvement Opportunity:</em> OTP performance is below the 95% industry target. Focus on delivery optimization and process improvements recommended.'}
-            
-            <strong>Recommended Actions:</strong>
-            <ul>
-            <li>Implement predictive delivery time modeling for better accuracy</li>
-            <li>Enhance real-time tracking capabilities for proactive management</li>
-            <li>Strengthen coordination protocols with delivery partners</li>
-            <li>Develop automated customer communication for delivery updates</li>
-            </ul>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        # Financial Analysis Section
-        if 'cost_sales' in tms_data:
-            st.markdown(f"""
-            <div class="report-section">
-            <h3>💰 Financial Performance Analysis</h3>
-            
-            <strong>Financial Overview:</strong><br>
-            Comprehensive cost and revenue analysis reveals operational profitability patterns.
-            
-            <strong>Key Financial Metrics:</strong>
-            <ul>
-            <li><strong>Total Revenue:</strong> €{total_revenue:,.0f}</li>
-            <li><strong>Total Operational Cost:</strong> €{total_cost:,.0f}</li>
-            <li><strong>Net Profit:</strong> €{(total_revenue - total_cost):,.0f}</li>
-            <li><strong>Profit Margin:</strong> {profit_margin:.1f}%</li>
-            </ul>
-            
-            <strong>Profitability Assessment:</strong><br>
-            {'🟢 <em>Strong Profitability:</em> Profit margins exceed the 20% target, indicating efficient operations and effective pricing strategies.' if profit_margin >= 20 else '🟡 <em>Margin Optimization Needed:</em> Current profit margin is below the 20% target. Cost optimization and pricing review recommended.'}
-            
-            <strong>Account Portfolio Analysis:</strong>
-            <ul>
-            <li><strong>Fisher Clinical Services:</strong> Major pharmaceutical logistics account</li>
-            <li><strong>QIAGEN GmbH:</strong> Weekly service arrangements indicating recurring business</li>
-            <li><strong>Account Diversification:</strong> Multiple customer accounts reducing concentration risk</li>
-            </ul>
-            
-            <strong>Financial Recommendations:</strong>
-            <ul>
-            <li>Implement dynamic pricing based on service complexity and market conditions</li>
-            <li>Focus on high-margin pharmaceutical logistics expansion</li>
-            <li>Optimize cost structure through operational efficiency improvements</li>
-            <li>Strengthen relationships with key accounts for long-term profitability</li>
-            </ul>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        # Lane Analysis Section
-        if 'lanes' in tms_data:
-            st.markdown("""
-            <div class="report-section">
-            <h3>🛣️ European Network Analysis</h3>
-            
-            <strong>Network Coverage Overview:</strong><br>
-            Your lane usage data reveals an extensive European distribution network with strategic positioning.
-            
-            <strong>Geographic Coverage:</strong>
-            <ul>
-            <li><strong>Core European Markets:</strong> AT, BE, DE, DK, ES, FR, GB, IT, NL, SE</li>
-            <li><strong>Hub Operations:</strong> Netherlands (NL) as central distribution hub</li>
-            <li><strong>Specialized Corridors:</strong> High-value pharmaceutical routes</li>
-            <li><strong>Global Reach:</strong> Selective intercontinental services (US, AU, NZ)</li>
-            </ul>
-            
-            <strong>Strategic Network Advantages:</strong>
-            <ul>
-            <li><strong>Amsterdam Hub:</strong> Optimal geographic position for European distribution</li>
-            <li><strong>Pharmaceutical Focus:</strong> Specialized routes for clinical and pharmaceutical logistics</li>
-            <li><strong>Regulatory Compliance:</strong> European network facilitates regulatory adherence</li>
-            <li><strong>Scalability:</strong> Network structure supports growth and expansion</li>
-            </ul>
-            
-            <strong>Network Optimization Opportunities:</strong>
-            <ul>
-            <li>Strengthen high-volume European corridors for efficiency gains</li>
-            <li>Develop specialized pharmaceutical logistics capabilities</li>
-            <li>Implement hub optimization for improved distribution efficiency</li>
-            <li>Expand strategic partnerships for enhanced network coverage</li>
-            </ul>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        # Strategic Recommendations
+        # Performance Metrics Summary
         st.markdown(f"""
         <div class="report-section">
-        <h3>🎯 Strategic Recommendations</h3>
+        <h3>Performance Metrics Summary</h3>
+        
+        <strong>Operational Performance:</strong>
+        <ul>
+        <li><strong>Total Volume Processed:</strong> {int(total_volume):,} pieces</li>
+        <li><strong>On-Time Performance:</strong> {avg_otp:.1f}% (Target: 95%)</li>
+        <li><strong>Total Revenue:</strong> €{total_revenue:,.0f}</li>
+        <li><strong>Profit Margin:</strong> {profit_margin:.1f}% (Target: 20%)</li>
+        </ul>
+        
+        <strong>Performance Assessment:</strong>
+        <ul>
+        <li><strong>Volume:</strong> Diverse geographic coverage with concentrated activity in key markets</li>
+        <li><strong>Quality:</strong> {'Performance exceeds industry standards' if avg_otp >= 95 else 'Performance improvement required to meet 95% target'}</li>
+        <li><strong>Profitability:</strong> {'Strong financial performance with healthy margins' if profit_margin >= 20 else 'Margin optimization opportunities identified'}</li>
+        <li><strong>Network:</strong> Comprehensive European coverage with established lane networks</li>
+        </ul>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Strategic Recommendations
+        st.markdown("""
+        <div class="report-section">
+        <h3>Strategic Recommendations</h3>
         
         <strong>Immediate Actions (0-3 months):</strong>
         <ol>
-        <li><strong>Performance Optimization:</strong> 
-            <ul>
-            <li>Implement automated OTP monitoring and alerts</li>
-            <li>Enhance delivery time prediction accuracy</li>
-            <li>Strengthen partner coordination protocols</li>
-            </ul>
-        </li>
-        <li><strong>Cost Management:</strong>
-            <ul>
-            <li>Analyze cost components for efficiency opportunities</li>
-            <li>Implement route optimization algorithms</li>
-            <li>Enhance operational cost tracking and control</li>
-            </ul>
-        </li>
-        <li><strong>Service Excellence:</strong>
-            <ul>
-            <li>Standardize clinical express handling procedures</li>
-            <li>Improve customer communication protocols</li>
-            <li>Implement proactive exception management</li>
-            </ul>
-        </li>
+        <li><strong>Performance Optimization:</strong> Implement automated OTP monitoring and alert systems</li>
+        <li><strong>Cost Management:</strong> Analyze cost components by country and service type for optimization opportunities</li>
+        <li><strong>Quality Improvement:</strong> Address delay root causes through process improvements</li>
         </ol>
         
         <strong>Medium-Term Strategy (3-12 months):</strong>
         <ol>
-        <li><strong>Market Expansion:</strong> Develop specialized pharmaceutical logistics capabilities</li>
-        <li><strong>Technology Enhancement:</strong> Upgrade TMS system with predictive analytics</li>
-        <li><strong>Financial Optimization:</strong> Implement dynamic pricing and cost management</li>
-        <li><strong>Network Development:</strong> Strengthen European distribution network</li>
+        <li><strong>Market Development:</strong> Focus resources on high-margin countries and lanes</li>
+        <li><strong>Operational Excellence:</strong> Standardize processes across all operational areas</li>
+        <li><strong>Technology Enhancement:</strong> Implement predictive analytics for performance optimization</li>
         </ol>
         
         <strong>Long-Term Vision (12+ months):</strong>
         <ol>
-        <li><strong>Market Leadership:</strong> Become leading pharmaceutical logistics provider in Europe</li>
-        <li><strong>Digital Transformation:</strong> AI-powered logistics optimization</li>
-        <li><strong>Sustainability:</strong> Implement sustainable logistics practices</li>
-        <li><strong>Innovation:</strong> Develop industry-specific solutions and capabilities</li>
+        <li><strong>Market Leadership:</strong> Establish dominant position in key European corridors</li>
+        <li><strong>Innovation:</strong> Develop advanced logistics solutions and services</li>
+        <li><strong>Sustainability:</strong> Implement sustainable logistics practices and reporting</li>
         </ol>
         </div>
         """, unsafe_allow_html=True)
         
         # Conclusion
-        st.markdown(f"""
+        st.markdown("""
         <div class="report-section">
-        <h3>📋 Conclusion</h3>
+        <h3>Conclusion</h3>
         
-        <strong>Executive Summary for Adam and the LFS Amsterdam Team:</strong><br><br>
-        
-        The TMS analysis reveals a well-positioned Amsterdam operation with strong capabilities in specialized pharmaceutical logistics and comprehensive European coverage. The data demonstrates:
+        The TMS analysis reveals a well-established Amsterdam operation with strong foundations in European logistics. The comprehensive data tracking capabilities provide excellent visibility into operational performance and financial metrics.
         
         <strong>Key Strengths:</strong>
         <ul>
-        <li>Diversified service portfolio with pharmaceutical specialization</li>
-        <li>Comprehensive European distribution network</li>
-        <li>Strong account relationships with major pharmaceutical companies</li>
-        <li>Detailed performance tracking and monitoring capabilities</li>
+        <li>Comprehensive data tracking and performance monitoring</li>
+        <li>Established European network with diverse country coverage</li>
+        <li>Strong operational foundation with detailed cost tracking</li>
+        <li>Professional quality control and delivery monitoring systems</li>
         </ul>
         
-        <strong>Performance Status:</strong>
+        <strong>Improvement Focus Areas:</strong>
         <ul>
-        <li><strong>Volume:</strong> {int(total_volume):,} pieces processed across multiple service types</li>
-        <li><strong>Quality:</strong> {avg_otp:.1f}% OTP achievement {'(exceeds target)' if avg_otp >= 95 else '(improvement needed)'}</li>
-        <li><strong>Financial:</strong> {profit_margin:.1f}% profit margin {'(strong performance)' if profit_margin >= 20 else '(optimization opportunity)'}</li>
-        <li><strong>Network:</strong> Active European distribution with specialized capabilities</li>
+        <li>On-time performance optimization to exceed 95% target consistently</li>
+        <li>Cost structure analysis and margin improvement initiatives</li>
+        <li>Geographic market optimization based on profitability analysis</li>
+        <li>Operational process standardization and efficiency improvements</li>
         </ul>
         
-        <strong>Strategic Direction:</strong><br>
-        The Amsterdam office is well-positioned to become the leading pharmaceutical logistics hub in Europe through focused execution of performance optimization initiatives and strategic growth investments.
-        
-        <strong>Expected Outcomes:</strong>
-        <ul>
-        <li>Sustained operational excellence with >95% OTP achievement</li>
-        <li>Improved profitability through cost optimization and pricing strategy</li>
-        <li>Enhanced market position in pharmaceutical logistics</li>
-        <li>Continued growth in European distribution network</li>
-        </ul>
+        The Amsterdam office is well-positioned to achieve operational excellence through focused execution of the recommended improvement initiatives while maintaining its strong market position in European logistics.
         </div>
         """, unsafe_allow_html=True)
         
     else:
-        st.info("📁 Please upload your TMS data file to generate the comprehensive report.")
+        st.info("Please upload your TMS data file to generate the comprehensive report.")
 
 # Sidebar footer
 st.sidebar.markdown("---")
-st.sidebar.markdown("### 📊 System Status")
+st.sidebar.markdown("### System Status")
 if tms_data is not None:
-    st.sidebar.success(f"✅ Data loaded: {len(tms_data)} datasets")
-    st.sidebar.info(f"Last updated: {datetime.now().strftime('%H:%M:%S')}")
+    st.sidebar.success(f"Data loaded: {len(tms_data)} datasets")
 else:
-    st.sidebar.warning("📁 Awaiting data upload")
+    st.sidebar.warning("Awaiting data upload")
 
-st.sidebar.markdown("### ℹ️ Dashboard Info")
-st.sidebar.info("Created for Adam and LFS Amsterdam team")
+st.sidebar.markdown("### Dashboard Info")
+st.sidebar.info("Created for LFS Amsterdam team")
