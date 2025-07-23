@@ -462,26 +462,57 @@ if tms_data is not None:
                 with col1:
                     st.markdown('<div class="chart-container">', unsafe_allow_html=True)
                     time_diff_clean = otp_df['Time_Diff'].dropna()
-                    if not time_diff_clean.empty:
-                        # Create histogram bins
-                        hist_data = pd.cut(time_diff_clean, bins=10).value_counts().sort_index()
-                        st.bar_chart(hist_data, height=300)
+                    if not time_diff_clean.empty and len(time_diff_clean) > 0:
+                        try:
+                            # Create simple binned data for visualization
+                            bins = [-np.inf, -1, -0.5, 0, 0.5, 1, np.inf]
+                            labels = ['Early >1d', 'Early 0.5-1d', 'Early <0.5d', 'On Time', 'Late 0.5-1d', 'Late >1d']
+                            
+                            # Ensure we have valid numeric data
+                            time_diff_numeric = pd.to_numeric(time_diff_clean, errors='coerce').dropna()
+                            
+                            if len(time_diff_numeric) > 0:
+                                binned_data = pd.cut(time_diff_numeric, bins=bins, labels=labels)
+                                hist_counts = binned_data.value_counts()
+                                
+                                if not hist_counts.empty:
+                                    st.bar_chart(hist_counts, height=300)
+                                else:
+                                    st.info("No valid time difference data to display")
+                            else:
+                                st.info("No numeric time difference data available")
+                        except Exception as e:
+                            st.info("Time difference analysis unavailable")
+                    else:
+                        st.info("No time difference data available")
                     st.markdown('</div>', unsafe_allow_html=True)
                 
                 with col2:
                     st.markdown('<div class="chart-container">', unsafe_allow_html=True)
-                    if not time_diff_clean.empty:
-                        time_stats = pd.DataFrame({
-                            'Statistic': ['Mean Difference', 'Median', 'Std Dev', 'Min', 'Max'],
-                            'Days': [
-                                f"{time_diff_clean.mean():.2f}",
-                                f"{time_diff_clean.median():.2f}",
-                                f"{time_diff_clean.std():.2f}",
-                                f"{time_diff_clean.min():.2f}",
-                                f"{time_diff_clean.max():.2f}"
-                            ]
-                        })
-                        st.dataframe(time_stats, hide_index=True, use_container_width=True)
+                    time_diff_clean = otp_df['Time_Diff'].dropna()
+                    if not time_diff_clean.empty and len(time_diff_clean) > 0:
+                        try:
+                            # Convert to numeric and calculate stats
+                            time_diff_numeric = pd.to_numeric(time_diff_clean, errors='coerce').dropna()
+                            
+                            if len(time_diff_numeric) > 0:
+                                time_stats = pd.DataFrame({
+                                    'Statistic': ['Mean Difference', 'Median', 'Std Dev', 'Min', 'Max'],
+                                    'Days': [
+                                        f"{time_diff_numeric.mean():.2f}",
+                                        f"{time_diff_numeric.median():.2f}",
+                                        f"{time_diff_numeric.std():.2f}",
+                                        f"{time_diff_numeric.min():.2f}",
+                                        f"{time_diff_numeric.max():.2f}"
+                                    ]
+                                })
+                                st.dataframe(time_stats, hide_index=True, use_container_width=True)
+                            else:
+                                st.info("No numeric data for statistics")
+                        except Exception as e:
+                            st.info("Time statistics unavailable")
+                    else:
+                        st.info("No time difference data for analysis")
                     st.markdown('</div>', unsafe_allow_html=True)
         
         # OTP Insights
