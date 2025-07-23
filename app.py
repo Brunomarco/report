@@ -1,4 +1,36 @@
-import streamlit as st
+# Lane Network Insights
+        st.markdown('<div class="insight-box">', unsafe_allow_html=True)
+        st.markdown("**🛣️ Lane Network Analysis Insights**")
+        
+        st.markdown("• **European Hub Strategy**: Amsterdam positioned as central distribution point")
+        st.markdown("• **Multi-Country Coverage**: Comprehensive network spanning major European markets")
+        st.markdown("• **Route Optimization**: High-volume lanes identified for capacity planning")
+        st.markdown("• **Network Efficiency**: Balanced origin-destination flow patterns")
+        st.markdown("• **Strategic Routes**: Key corridors supporting business growth")
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Detailed Lane Network Analysis
+        st.markdown("---")
+        st.markdown("### 🌍 Comprehensive Network Analysis")
+        
+        if 'lanes' in tms_data and not tms_data['lanes'].empty:
+            lane_df = tms_data['lanes']
+            
+            # Calculate network metrics for analysis
+            total_shipments = 0
+            active_lanes = 0
+            if len(lane_df) > 0:
+                numeric_data = lane_df.select_dtypes(include=[np.number])
+                if not numeric_data.empty:
+                    total_shipments = numeric_data.sum().sum()
+                    active_lanes = (numeric_data > 0).sum().sum()
+            
+            network_analysis = f"""
+            **Network Architecture:** The Amsterdam TMS operation maintains an extensive lane network with {len(lane_df)} origin countries 
+            and {len(lane_df.columns)-1 if len(lane_df.columns) > 1 else 0} destination markets, processing {int(total_shipments):,} total shipments 
+            across {int(active_lanes):,} active lanes. This comprehensive coverage positions Amsterdam as a true European logistics hub with global reach.
+            
+            **Traffic Flow Analysis:** The origin-destination matrix reveals strategic shipping patterns with balanced inbound and outbound flows. import streamlit as st
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
@@ -521,6 +553,27 @@ if tms_data is not None:
         st.markdown("• **Quality Control**: Multiple QC checkpoints ensuring delivery accuracy")
         st.markdown("• **Time Tracking**: Detailed analysis of delivery time variations")
         st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Detailed OTP Analysis
+        st.markdown("---")
+        st.markdown("### ⏰ Comprehensive OTP Performance Analysis")
+        
+        otp_analysis = f"""
+        **Delivery Performance Overview:** With {total_orders:,} orders tracked through the TMS system, the operation achieves an {avg_otp:.1f}% on-time performance rate. 
+        This {'exceeds' if avg_otp >= 95 else 'falls short of'} the industry benchmark of 95%, {'demonstrating excellent operational control' if avg_otp >= 95 else 'indicating areas for improvement in delivery management'}.
+        
+        **Quality Control Impact:** The QC Name analysis reveals specific delay causes and control points throughout the delivery process. 
+        Common issues include MNX-Incorrect QDT (incorrect quoted delivery times), customer-related changes and delays, and operational bottlenecks. 
+        This detailed tracking enables targeted improvements in process reliability and customer communication.
+        
+        **Delivery Time Analysis:** The time difference analysis shows the distribution of early, on-time, and late deliveries, providing insights into 
+        operational predictability and customer satisfaction levels. Understanding these patterns enables proactive management of delivery expectations and resource allocation.
+        
+        **Performance Improvement Opportunities:** {'Current excellent performance provides a strong foundation for maintaining industry leadership' if avg_otp >= 95 else 'The gap to target performance represents significant opportunity for customer satisfaction improvement and competitive differentiation'}. 
+        Focus areas include {'maintaining current excellence through continuous monitoring' if avg_otp >= 95 else 'addressing root causes of delays, improving delivery time accuracy, and enhancing customer communication'}.
+        """
+        
+        st.markdown(otp_analysis)
     
     # TAB 4: Financial Analysis
     with tab4:
