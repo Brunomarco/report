@@ -881,7 +881,9 @@ st.sidebar.info("""
 Created for LFS Amsterdam  
 Real-time performance monitoring  
 Comprehensive business intelligence
-""")     st.sidebar.button("📊 Export Analysis"):
+""")     # Data export
+    st.sidebar.markdown("### 📥 Export Data")
+    if st.sidebar.button("📊 Export Analysis"):
         st.sidebar.info("Contact administrator for data export")
 
 else:
